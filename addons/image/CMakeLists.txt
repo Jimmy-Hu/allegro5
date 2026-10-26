@@ -25,7 +25,7 @@ endfunction()
 # ALLEGRO_CFG_IIO_SUPPORT_* are the supported formats.
 
 # First look for native libraries and mark any supported image
-# type as found, so that the associated third party libraries 
+# type as found, so that the associated third party libraries
 # don't need to be used.
 
 if(WANT_NATIVE_IMAGE_LOADER)
@@ -66,17 +66,11 @@ if(WANT_NATIVE_IMAGE_LOADER)
             endif(MINGW)
             list(APPEND IMAGE_DEFINES ${GDIPLUS_DEFINITIONS})
             list(APPEND IMAGE_INCLUDE_DIRECTORIES ${GDIPLUS_INCLUDE_DIR})
-            include_directories(SYSTEM ${GDIPLUS_INCLUDE_DIR})            
+            include_directories(SYSTEM ${GDIPLUS_INCLUDE_DIR})
         else(SUPPORT_GDIPLUS)
             message("WARNING: cannot use GDI+. Will try other libraries.")
         endif(SUPPORT_GDIPLUS)
     endif(WIN32)
-
-    if (ALLEGRO_MACOSX)
-        set(ALLEGRO_CFG_IIO_SUPPORT_PNG 1)
-        set(ALLEGRO_CFG_IIO_SUPPORT_JPG 1)
-        list(APPEND IMAGE_SOURCES macosx.m)
-    endif(ALLEGRO_MACOSX)
 
     if(ANDROID)
         set(ALLEGRO_CFG_IIO_HAVE_ANDROID 1)
@@ -93,7 +87,7 @@ endif(WANT_NATIVE_IMAGE_LOADER)
 
 if(WIN32)
     image_summary(" - GDI+" SUPPORT_GDIPLUS)
-elseif(MACOSX OR ANDROID OR IPHONE)
+elseif(ANDROID OR IPHONE)
     image_summary(" - Native image loader" WANT_NATIVE_IMAGE_LOADER)
 endif()
 

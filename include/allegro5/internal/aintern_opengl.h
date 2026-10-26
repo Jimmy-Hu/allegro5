@@ -4,6 +4,7 @@
 #include "allegro5/opengl/gl_ext.h"
 #include "allegro5/internal/aintern_bitmap.h"
 #include "allegro5/internal/aintern_display.h"
+#include "allegro5/internal/aintern_primitives.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -53,7 +54,7 @@ typedef struct ALLEGRO_FBO_BUFFERS
     */
    GLuint depth_buffer;
    int dw, dh, depth;
-   
+
    GLuint multisample_buffer;
    int mw, mh, samples;
 } ALLEGRO_FBO_BUFFERS;
@@ -64,7 +65,7 @@ typedef struct ALLEGRO_FBO_INFO
    GLuint fbo;
 
    ALLEGRO_FBO_BUFFERS buffers;
-      
+
    ALLEGRO_BITMAP *owner;
    double last_use_time;
 } ALLEGRO_FBO_INFO;
@@ -79,6 +80,8 @@ typedef struct ALLEGRO_BITMAP_EXTRA_OPENGL
    GLuint texture; /* 0 means, not uploaded yet. */
 
    ALLEGRO_FBO_INFO *fbo_info;
+   /* We tried to create an FBO, but failed... don't keep trying. */
+   bool fbo_failed;
 
    /* When an OpenGL bitmap is locked, the locked region is usually backed by a
     * temporary memory buffer pointed to by lock_buffer.
@@ -102,7 +105,7 @@ typedef struct OPENGL_INFO {
    int is_matrox_g200;     /* Special cases for Matrox G200 boards */
    int is_ati_rage_pro;    /* Special cases for ATI Rage Pro boards */
    int is_ati_radeon_7000; /* Special cases for ATI Radeon 7000 */
-   int is_ati_r200_chip;	/* Special cases for ATI card with chip R200 */
+   int is_ati_r200_chip;        /* Special cases for ATI card with chip R200 */
    int is_mesa_driver;     /* Special cases for MESA */
    int is_intel_hd_graphics_3000;
 } OPENGL_INFO;
@@ -122,7 +125,7 @@ typedef struct ALLEGRO_OGL_VARLOCS
    GLint alpha_test_loc;
    GLint alpha_func_loc;
    GLint alpha_test_val_loc;
-   GLint user_attr_loc[_ALLEGRO_PRIM_MAX_USER_ATTR];
+   GLint user_attr_loc[ALLEGRO_PRIM_MAX_USER_ATTR];
 } ALLEGRO_OGL_VARLOCS;
 
 typedef struct ALLEGRO_OGL_EXTRAS

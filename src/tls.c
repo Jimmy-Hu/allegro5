@@ -207,18 +207,11 @@ ALLEGRO_EXTRA_DISPLAY_SETTINGS *_al_get_new_display_settings(void)
 void al_set_new_window_title(const char *title)
 {
    thread_local_state *tls;
-   size_t size;
 
    if ((tls = tls_get()) == NULL)
       return;
 
-   size = strlen(title);
-
-   if (size > ALLEGRO_NEW_WINDOW_TITLE_MAX_SIZE) {
-      size = ALLEGRO_NEW_WINDOW_TITLE_MAX_SIZE;
-   }
-
-   _al_sane_strncpy(tls->new_window_title, title, size + 1);
+   _al_sane_strncpy(tls->new_window_title, title, sizeof(tls->new_window_title));
 }
 
 
@@ -233,9 +226,8 @@ const char *al_get_new_window_title(void)
    if ((tls = tls_get()) == NULL)
       return al_get_app_name();
 
-   if (strlen(tls->new_window_title) < 1)
+   if (tls->new_window_title[0] == '\0')
       return al_get_app_name();
-
 
    return (const char *)tls->new_window_title;
 }
@@ -718,7 +710,7 @@ void al_store_state(ALLEGRO_STATE *state, int flags)
       _STORE(new_window_y);
       _STORE(new_display_settings);
       _al_sane_strncpy(stored->tls.new_window_title, tls->new_window_title,
-                       strlen(tls->new_window_title));
+                       sizeof(stored->tls.new_window_title));
    }
 
    if (flags & ALLEGRO_STATE_NEW_BITMAP_PARAMETERS) {
@@ -789,7 +781,7 @@ void al_restore_state(ALLEGRO_STATE const *state)
       _RESTORE(new_window_y);
       _RESTORE(new_display_settings);
       _al_sane_strncpy(tls->new_window_title, stored->tls.new_window_title,
-                       strlen(tls->new_window_title));
+                       sizeof(tls->new_window_title));
    }
 
    if (flags & ALLEGRO_STATE_NEW_BITMAP_PARAMETERS) {

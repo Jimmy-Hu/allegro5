@@ -347,7 +347,7 @@ static ALLEGRO_DISPLAY_XGLX *xdpy_create_display_locked(
 
    d->is_mapped = false;
    _al_cond_init(&d->mapped);
-   
+
    d->is_selectioned = false;
    _al_cond_init(&d->selectioned);
 
@@ -532,6 +532,7 @@ static ALLEGRO_DISPLAY_XGLX *xdpy_create_display_locked(
 
    d->invisible_cursor = None; /* Will be created on demand. */
    d->current_cursor = None; /* Initially, we use the root cursor. */
+   d->is_system_cursor = true;
    d->cursor_hidden = false;
 
    d->icon = None;
@@ -564,7 +565,9 @@ static bool xdpy_create_display_hook_default(ALLEGRO_DISPLAY *display,
    } else {
       ALLEGRO_STATE state;
       al_store_state(&state, ALLEGRO_STATE_NEW_BITMAP_PARAMETERS);
+      al_set_new_bitmap_flags(ALLEGRO_MEMORY_BITMAP);
       ALLEGRO_BITMAP *bitmap = al_create_bitmap(ICON_WIDTH, ICON_HEIGHT);
+      al_restore_state(&state);
 
       ALLEGRO_LOCKED_REGION *lr = al_lock_bitmap(bitmap, ALLEGRO_PIXEL_FORMAT_RGBA_8888, ALLEGRO_LOCK_WRITEONLY);
       for (int y = 0; y < ICON_HEIGHT; y++) {
@@ -607,11 +610,6 @@ static ALLEGRO_DISPLAY *xdpy_create_display(int w, int h)
       return NULL;
    }
 
-   if (w <= 0 || h <= 0) {
-      ALLEGRO_ERROR("Invalid window size %dx%d\n", w, h);
-      return NULL;
-   }
-
    flags = al_get_new_display_flags();
    if (flags & ALLEGRO_GTK_TOPLEVEL_INTERNAL) {
       if (gtk_override_vt == NULL) {
@@ -624,9 +622,29 @@ static ALLEGRO_DISPLAY *xdpy_create_display(int w, int h)
       }
    }
 
+   adapter = al_get_new_display_adapter();
+
+   /* FULLSCREEN_WINDOW ignores the passed size (see al_create_display docs);
+    * substitute the desktop size of the target adapter so this path matches
+    * the wgl/d3d behaviour and (0, 0) is accepted as a "use desktop" request.
+    */
+   if ((w <= 0 || h <= 0) && (flags & ALLEGRO_FULLSCREEN_WINDOW)) {
+      ALLEGRO_MONITOR_INFO mi;
+      int a = (adapter < 0) ? _al_xglx_get_default_adapter(system) : adapter;
+      if (_al_xglx_get_monitor_info(system, a, &mi)) {
+         w = mi.x2 - mi.x1;
+         h = mi.y2 - mi.y1;
+         ALLEGRO_DEBUG("FULLSCREEN_WINDOW: using desktop size %dx%d from adapter %d\n", w, h, a);
+      }
+   }
+
+   if (w <= 0 || h <= 0) {
+      ALLEGRO_ERROR("Failed to determine a reasonable window size, got: %dx%d\n", w, h);
+      return NULL;
+   }
+
    _al_mutex_lock(&system->lock);
 
-   adapter = al_get_new_display_adapter();
    display = xdpy_create_display_locked(system, flags, w, h, adapter);
 
    _al_mutex_unlock(&system->lock);
@@ -1213,13 +1231,21 @@ static void xdpy_set_window_title_default(ALLEGRO_DISPLAY *display, const char *
       Atom _NET_WM_NAME = XInternAtom(system->x11display, "_NET_WM_NAME", False);
       char *list[1] = { (char *) title };
       XTextProperty property;
-
-      Xutf8TextListToTextProperty(system->x11display, list, 1, XUTF8StringStyle,
+      int status = Xutf8TextListToTextProperty(system->x11display, list, 1, XUTF8StringStyle,
          &property);
-      XSetTextProperty(system->x11display, glx->window, &property, WM_NAME);
-      XSetTextProperty(system->x11display, glx->window, &property, _NET_WM_NAME);
-      XSetTextProperty(system->x11display, glx->window, &property, XA_WM_NAME);
-      XFree(property.value);
+
+      if (status == Success) {
+         XSetTextProperty(system->x11display, glx->window, &property, WM_NAME);
+         XSetTextProperty(system->x11display, glx->window, &property, _NET_WM_NAME);
+         XSetTextProperty(system->x11display, glx->window, &property, XA_WM_NAME);
+         XFree(property.value);
+      }
+      else if (status == XLocaleNotSupported) {
+         ALLEGRO_WARN("Couldn't set window title. Xutf8TextListToTextProperty returned XLocaleNotSupported.\n");
+      }
+      else {
+         ALLEGRO_WARN("Couldn't set window title. Xutf8TextListToTextProperty returned: %d\n", status);
+      }
    }
    {
       XClassHint *hint = XAllocClassHint();
@@ -1373,6 +1399,9 @@ static void xdpy_apply_window_constraints(ALLEGRO_DISPLAY *display,
 static void xdpy_set_fullscreen_window_default(ALLEGRO_DISPLAY *display, bool onoff)
 {
    if (onoff == !(display->flags & ALLEGRO_FULLSCREEN_WINDOW)) {
+      ALLEGRO_SYSTEM_XGLX *system = (ALLEGRO_SYSTEM_XGLX *)al_get_system_driver();
+      _al_mutex_lock(&system->lock);
+
       _al_xwin_reset_size_hints(display);
       _al_xwin_set_fullscreen_window(display, 2);
       /* XXX Technically, the user may fiddle with the _NET_WM_STATE_FULLSCREEN
@@ -1383,6 +1412,8 @@ static void xdpy_set_fullscreen_window_default(ALLEGRO_DISPLAY *display, bool on
       _al_xwin_set_size_hints(display, INT_MAX, INT_MAX);
 
       set_compositor_bypass_flag(display);
+
+      _al_mutex_unlock(&system->lock);
    }
 }
 
@@ -1392,19 +1423,25 @@ static bool xdpy_set_display_flag_default(ALLEGRO_DISPLAY *display, int flag,
 {
    switch (flag) {
       case ALLEGRO_FRAMELESS:
+      {
          /* The ALLEGRO_FRAMELESS flag is backwards. */
          _al_xwin_set_frame(display, !flag_onoff);
          return true;
+      }
       case ALLEGRO_FULLSCREEN_WINDOW:
       {
-         /* Bypass system lock. */
          ALLEGRO_DISPLAY_XGLX *glx = (ALLEGRO_DISPLAY_XGLX *)display;
          glx->overridable_vt->set_fullscreen_window(display, flag_onoff);
          return true;
       }
       case ALLEGRO_MAXIMIZED:
+      {
+         ALLEGRO_SYSTEM_XGLX *system = (ALLEGRO_SYSTEM_XGLX *)al_get_system_driver();
+         _al_mutex_lock(&system->lock);
          _al_xwin_maximize(display, flag_onoff);
+         _al_mutex_unlock(&system->lock);
          return true;
+      }
    }
    return false;
 }
@@ -1413,11 +1450,7 @@ static bool xdpy_set_display_flag_default(ALLEGRO_DISPLAY *display, int flag,
 static bool xdpy_set_display_flag(ALLEGRO_DISPLAY *display, int flag, bool onoff)
 {
    ALLEGRO_DISPLAY_XGLX *glx = (ALLEGRO_DISPLAY_XGLX *)display;
-   ALLEGRO_SYSTEM_XGLX *system = (ALLEGRO_SYSTEM_XGLX *)al_get_system_driver();
-   _al_mutex_lock(&system->lock);
-   bool ret = glx->overridable_vt->set_display_flag(display, flag, onoff);
-   _al_mutex_unlock(&system->lock);
-   return ret;
+   return glx->overridable_vt->set_display_flag(display, flag, onoff);
 }
 
 

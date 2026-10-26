@@ -38,7 +38,7 @@ ALLEGRO_BITMAP *_al_load_pcx_f(ALLEGRO_FILE *f, int flags)
    width += al_fread16le(f) + 1;      /* xmax */
    height += al_fread16le(f) + 1;     /* ymax */
 
-   al_fread32le(f);		   /* skip DPI values */
+   al_fread32le(f);                   /* skip DPI values */
 
    for (c = 0; c < 16 * 3; c++) {          /* skip the 16 color palette */
       al_fgetc(f);
@@ -55,7 +55,7 @@ ALLEGRO_BITMAP *_al_load_pcx_f(ALLEGRO_FILE *f, int flags)
 
    bytes_per_line = al_fread16le(f);
    /* It can only be this because we only support 8 bit planes */
-   if (bytes_per_line != width) {
+   if (bytes_per_line < width) {
       ALLEGRO_ERROR("Invalid bytes per line %d\n", bytes_per_line);
       return NULL;
    }
@@ -73,7 +73,7 @@ ALLEGRO_BITMAP *_al_load_pcx_f(ALLEGRO_FILE *f, int flags)
       ALLEGRO_ERROR("Failed to create bitmap.\n");
       return NULL;
    }
-   
+
    keep_index = INT_TO_BOOL(flags & ALLEGRO_KEEP_INDEX);
 
    al_set_errno(0);
@@ -97,8 +97,7 @@ ALLEGRO_BITMAP *_al_load_pcx_f(ALLEGRO_FILE *f, int flags)
    }
    if (!lr) {
       ALLEGRO_ERROR("Failed to lock bitmap.\n");
-      al_free(buf);
-      return NULL;
+      goto error;
    }
 
    xx = 0;                      /* index into buf, only for bpp = 8 */
@@ -109,9 +108,17 @@ ALLEGRO_BITMAP *_al_load_pcx_f(ALLEGRO_FILE *f, int flags)
 
       while (x < bytes_per_line * bpp / 8) {
          ch = al_fgetc(f);
+         if (al_feof(f)) {
+            ALLEGRO_ERROR("Unexpected EOF.\n");
+            goto error;
+         }
          if ((ch & 0xC0) == 0xC0) { /* a run */
             c = (ch & 0x3F);
             ch = al_fgetc(f);
+            if (al_feof(f)) {
+               ALLEGRO_ERROR("Unexpected EOF.\n");
+               goto error;
+            }
          }
          else {
             c = 1;                  /* single pixel */
@@ -182,6 +189,10 @@ ALLEGRO_BITMAP *_al_load_pcx_f(ALLEGRO_FILE *f, int flags)
    }
 
    return b;
+error:
+   al_free(buf);
+   al_destroy_bitmap(b);
+   return NULL;
 }
 
 bool _al_save_pcx_f(ALLEGRO_FILE *f, ALLEGRO_BITMAP *bmp)
@@ -311,7 +322,7 @@ bool _al_identify_pcx(ALLEGRO_FILE *f)
 {
    uint8_t x[4];
    al_fread(f, x, 4);
-   
+
    if (x[0] != 0x0a) // PCX must start with 0x0a
       return false;
    if (x[1] == 1 || x[1] > 5) // version must be 0, 2, 3, 4, 5

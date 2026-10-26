@@ -20,6 +20,7 @@
 #include "allegro5/internal/aintern_convert.h"
 #include "allegro5/internal/aintern_memblit.h"
 #include "allegro5/internal/aintern_transform.h"
+#include "allegro5/internal/aintern_primitives.h"
 #include "allegro5/internal/aintern_tri_soft.h"
 #include <math.h>
 
@@ -138,7 +139,7 @@ void _al_draw_bitmap_region_memory(ALLEGRO_BITMAP *src,
    int op, src_mode, dst_mode;
    int op_alpha, src_alpha, dst_alpha;
    float xtrans, ytrans;
-   
+
    ASSERT(src->parent == NULL);
 
    al_get_separate_bitmap_blender(&op,

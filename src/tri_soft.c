@@ -22,6 +22,7 @@
 #include "allegro5/internal/aintern_bitmap.h"
 #include "allegro5/internal/aintern_blend.h"
 #include "allegro5/internal/aintern_pixels.h"
+#include "allegro5/internal/aintern_primitives.h"
 #include "allegro5/internal/aintern_tri_soft.h"
 #include <math.h>
 
@@ -132,7 +133,7 @@ static void shader_grad_any_init(uintptr_t state, ALLEGRO_VERTEX* v1, ALLEGRO_VE
    state_grad_any_2d* s = (state_grad_any_2d*)state;
 
    s->solid.target = al_get_target_bitmap();
-   
+
    s->off_x = v1->x - 0.5f;
    s->off_y = v1->y + 0.5f;
 
@@ -243,7 +244,7 @@ static void shader_texture_solid_any_init(uintptr_t state, ALLEGRO_VERTEX* v1, A
 
    s->w = al_get_bitmap_width(s->texture);
    s->h = al_get_bitmap_height(s->texture);
-   
+
    if (det_u == 0.0f) {
       s->du_dx = s->du_dy = s->u_const = 0.0f;
       s->dv_dx = s->dv_dy = s->v_const = 0.0f;
@@ -320,7 +321,7 @@ static void shader_texture_grad_any_init(uintptr_t state, ALLEGRO_VERTEX* v1, AL
    PLANE_DETS(v, v1->v, v2->v, v3->v)
 
    state_texture_grad_any_2d* s = (state_texture_grad_any_2d*)state;
-   
+
    s->solid.target = al_get_target_bitmap();
    s->solid.w = al_get_bitmap_width(s->solid.texture);
    s->solid.h = al_get_bitmap_height(s->solid.texture);

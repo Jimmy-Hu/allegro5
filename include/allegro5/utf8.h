@@ -18,9 +18,9 @@ typedef struct _al_tagbstring ALLEGRO_USTR_INFO;
 #ifndef __al_tagbstring_defined
 #define __al_tagbstring_defined
 struct _al_tagbstring {
-	int mlen;
-	int slen;
-	unsigned char * data;
+        int mlen;
+        int slen;
+        unsigned char * data;
 };
 #endif
 
@@ -45,6 +45,7 @@ AL_FUNC(const ALLEGRO_USTR *, al_ref_buffer, (ALLEGRO_USTR_INFO *info, const cha
       size_t size));
 AL_FUNC(const ALLEGRO_USTR *, al_ref_ustr, (ALLEGRO_USTR_INFO *info,
       const ALLEGRO_USTR *us, int start_pos, int end_pos));
+AL_FUNC(const ALLEGRO_USTR *, al_ref_info, (const ALLEGRO_USTR_INFO *info));
 
 /* Sizes and offsets */
 AL_FUNC(size_t, al_ustr_size, (const ALLEGRO_USTR *us));

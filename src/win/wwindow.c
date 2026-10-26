@@ -252,7 +252,7 @@ HWND _al_win_create_faux_fullscreen_window(LPCTSTR devname, ALLEGRO_DISPLAY *dis
    _al_vector_init(&win_display->msg_callbacks, sizeof(ALLEGRO_DISPLAY_WIN_CALLBACK));
 
    style = WS_VISIBLE;
-   ex_style = WS_EX_TOPMOST;
+   ex_style = 0;
 
    window_title = _twin_utf8_to_tchar(al_get_new_window_title());
    my_window = CreateWindowEx(ex_style,
@@ -868,10 +868,6 @@ static LRESULT CALLBACK window_callback(HWND hWnd, UINT message,
             d->flags &= ~ALLEGRO_MINIMIZED;
 
          if (LOWORD(wParam) != WA_INACTIVE) {
-            // Make fullscreen windows TOPMOST again
-            if (d->flags & ALLEGRO_FULLSCREEN_WINDOW) {
-               SetWindowPos(win_display->window, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-            }
             if (d->vt->switch_in)
                d->vt->switch_in(d);
             _al_win_fix_modifiers();
@@ -888,11 +884,6 @@ static LRESULT CALLBACK window_callback(HWND hWnd, UINT message,
             return 0;
          }
          else {
-            // Remove TOPMOST flag from fullscreen windows so we can alt-tab. Also must raise the new activated window
-            if (d->flags & ALLEGRO_FULLSCREEN_WINDOW) {
-               SetWindowPos(win_display->window, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-               SetWindowPos(GetForegroundWindow(), HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-            }
             if (d->flags & ALLEGRO_FULLSCREEN) {
                d->vt->switch_out(d);
             }
@@ -1055,6 +1046,8 @@ int _al_win_init_window(void)
 
    resize_event_thread_mutex = al_create_mutex();
    _al_vector_init(&resizing_displays, sizeof(ALLEGRO_DISPLAY_WIN *));
+   end_resize_event_thread = false;
+   resize_event_thread_ended = false;
    _beginthread(resize_event_thread_proc, 0, 0);
 
    return true;
@@ -1236,6 +1229,17 @@ void _al_win_get_window_position(HWND window, int *x, int *y)
 }
 
 
+static void update_adapter(ALLEGRO_DISPLAY *display)
+{
+   ALLEGRO_DISPLAY_WIN *win_display = (void*)display;
+   int adapter = al_get_display_adapter(display);
+   if (adapter >= 0)
+      win_display->adapter = adapter;
+   else
+      win_display->adapter = 0;
+}
+
+
 void _al_win_set_window_frameless(ALLEGRO_DISPLAY *display, HWND hWnd,
    bool frameless)
 {
@@ -1310,6 +1314,7 @@ bool _al_win_set_display_flag(ALLEGRO_DISPLAY *display, int flag, bool onoff)
          }
 
          if (onoff) {
+            update_adapter(display);
             int adapter = win_display->adapter;
             al_get_monitor_info(adapter, &mi);
             display->flags |= ALLEGRO_FULLSCREEN_WINDOW;
@@ -1330,17 +1335,14 @@ bool _al_win_set_display_flag(ALLEGRO_DISPLAY *display, int flag, bool onoff)
          al_resize_display(display, display->w, display->h);
 
          if (onoff) {
-            // Re-set the TOPMOST flag and move to position
-            SetWindowPos(win_display->window, HWND_TOPMOST, mi.x1, mi.y1, 0, 0, SWP_NOSIZE);
+            // Move to position
+            SetWindowPos(win_display->window, HWND_TOP, mi.x1, mi.y1, 0, 0, SWP_NOSIZE);
          }
          else {
             int pos_x = 0;
             int pos_y = 0;
             WINDOWINFO wi;
             int bw, bh;
-
-            // Unset the topmost flag
-            SetWindowPos(win_display->window, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
 
             // Center the window
             _al_win_get_window_center(win_display, display->w, display->h, &pos_x, &pos_y);

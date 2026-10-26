@@ -26,7 +26,7 @@
 #ifdef __cplusplus
    extern "C" {
 #endif
-    
+
 #define _ALLEGRO_MIN(x,y)     (((x) < (y)) ? (x) : (y))
 #define _ALLEGRO_MAX(x,y)     (((x) > (y)) ? (x) : (y))
 #define _ALLEGRO_CLAMP(x,y,z) _ALLEGRO_MAX((x), _ALLEGRO_MIN((y), (z)))
@@ -39,7 +39,7 @@ int _al_get_least_multiple(int val, int mul);
 /* various libc stuff */
 AL_FUNC(void *, _al_sane_realloc, (void *ptr, size_t size));
 AL_FUNC(char *, _al_sane_strncpy, (char *dest, const char *src, size_t n));
-
+AL_FUNC(char *, _al_strdup, (const char* string));
 
 #define _AL_RAND_MAX  0xFFFF
 AL_FUNC(void, _al_srand, (int seed));

@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
             fetch-depth: 1
 
@@ -24,20 +24,30 @@ jobs:
 
       - name: Install and Build
         run: |
-            sudo apt-get install -y libgl1-mesa-dev libglu-dev libxcursor-dev
+            sudo apt-get update
+            sudo apt-get install -qq -y -o=Dpkg::Use-Pty=0 libgl1-mesa-dev libglu-dev libxcursor-dev
             sudo dpkg -i pandoc-2.19.2-1-amd64.deb
             mkdir build
             cd build
             cmake ..
             make html
 
-      - name: Deploy
-        uses: JamesIves/github-pages-deploy-action@v4
+      - name: Checkout liballeg
+        uses: actions/checkout@v4
         with:
-            folder: build/docs/html/refman
-            target-folder: a5docs/trunk
-            token: ${{ secrets.LIBALLEG_PAT }}
-            branch: master
-            repository-name: liballeg/liballeg.github.io
-            commit-message: Automatic update from allegro5
-            clean: true
+          repository: liballeg/liballeg.github.io
+          ssh-key: ${{ secrets.LIBALLEG_DEPLOY_KEY }}
+          ref: master
+          path: liballeg
+
+      - name: Deploy
+        run: |
+          cd liballeg
+          git config user.name "allebot"
+          git config user.email "13711631+allebot@users.noreply.github.com"
+          rm -R a5docs/trunk
+          cp -R ../build/docs/html/refman a5docs/trunk
+          git add a5docs/trunk
+          git diff-index --quiet HEAD || git commit -m "Automatic update from allegro5"
+          git push
+

@@ -12,13 +12,13 @@
 
 struct ALLEGRO_AUDIO_RECORDER {
   ALLEGRO_EVENT_SOURCE source;
-  
+
   ALLEGRO_THREAD           *thread;
   ALLEGRO_MUTEX            *mutex;
   ALLEGRO_COND             *cond;
                            /* recording is done in its own thread as
                               implemented by the driver */
-  
+
   ALLEGRO_AUDIO_DEPTH      depth;
   ALLEGRO_CHANNEL_CONF     chan_conf;
   unsigned int             frequency;
@@ -31,17 +31,17 @@ struct ALLEGRO_AUDIO_RECORDER {
 
   unsigned int             samples;
                            /* the number of samples returned at every FRAGMENT event */
-                           
+
   size_t                   fragment_size;
                            /* size in bytes of each fragument */
 
   unsigned int             sample_size;
                            /* the size in bytes of each sample */
-  
-  volatile bool            is_recording; 
+
+  volatile bool            is_recording;
                            /* true if the driver should actively be updating
                               the buffer */
-                              
+
   void                     *extra;
                            /* custom data for the driver to use as needed */
 };
@@ -80,8 +80,8 @@ struct ALLEGRO_AUDIO_DRIVER {
 
    unsigned int   (*get_voice_position)(const ALLEGRO_VOICE*);
    int            (*set_voice_position)(ALLEGRO_VOICE*, unsigned int);
-   
-   
+
+
    int            (*allocate_recorder)(struct ALLEGRO_AUDIO_RECORDER *);
    void           (*deallocate_recorder)(struct ALLEGRO_AUDIO_RECORDER *);
 
@@ -188,8 +188,6 @@ typedef struct {
 
 /* The sample struct also serves the base of ALLEGRO_AUDIO_STREAM, ALLEGRO_MIXER. */
 struct ALLEGRO_SAMPLE_INSTANCE {
-   /* ALLEGRO_SAMPLE_INSTANCE does not generate any events yet but ALLEGRO_AUDIO_STREAM
-    * does, which can inherit only ALLEGRO_SAMPLE_INSTANCE. */
    ALLEGRO_EVENT_SOURCE es;
 
    ALLEGRO_SAMPLE       spl_data;
@@ -213,8 +211,8 @@ struct ALLEGRO_SAMPLE_INSTANCE {
 
    int                  step;
    int                  step_denom;
-                        /* The numerator and denominator of the step are 
-                         * stored separately. The actual step is obtained by 
+                        /* The numerator and denominator of the step are
+                         * stored separately. The actual step is obtained by
                          * dividing step by step_denom */
 
    float                *matrix;
@@ -390,6 +388,9 @@ ALLEGRO_KCM_AUDIO_FUNC(ALLEGRO_CHANNEL_CONF, _al_count_to_channel_conf, (int num
 ALLEGRO_KCM_AUDIO_FUNC(ALLEGRO_AUDIO_DEPTH, _al_word_size_to_depth_conf, (int word_size));
 
 ALLEGRO_KCM_AUDIO_FUNC(void, _al_emit_audio_event, (int event_type));
+
+/* Helper to emit a sample finished event */
+void _al_kcm_emit_sample_finished_event(ALLEGRO_SAMPLE_INSTANCE *spl);
 
 #endif
 

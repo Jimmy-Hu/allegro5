@@ -68,6 +68,7 @@ set(DATA_IMAGES
 
 set(DATA_TTF
     DejaVuSans.ttf
+    NotoColorEmoji_Animals.ttf
     a4_font.fnt
     )
 
@@ -83,6 +84,10 @@ set(DATA_SHADERS
     ex_prim_shader_vertex.hlsl
     ex_prim_wrap_pixel.glsl
     ex_prim_wrap_pixel.hlsl
+    ex_prim_high_vertex.glsl
+    ex_prim_high_vertex.hlsl
+    ex_prim_high_pixel.glsl
+    ex_prim_high_pixel.hlsl
     ex_shader_multitex_pixel.glsl
     ex_shader_multitex_pixel.hlsl
     ex_shader_palette_pixel.glsl
@@ -145,6 +150,7 @@ example(ex_draw ${FONT} ${IMAGE} ${COLOR} ${PRIM} ${DATA_IMAGES})
 example(ex_draw_bitmap ${IMAGE} ${FONT} ${DATA_IMAGES})
 example(ex_drawpixels)
 example(ex_dualies ${IMAGE})
+example(ex_emoji ${TTF} ${COLOR} ${PRIM} ${IMAGE} DATA ${DATA_TTF})
 example(ex_expose ${IMAGE} ${PRIM} ${DATA_IMAGES})
 example(ex_filter ${FONT} ${IMAGE} ${COLOR} ${DATA_IMAGES})
 example(ex_fs_resize ${IMAGE} ${PRIM} ${DATA_IMAGES})
@@ -154,7 +160,7 @@ example(ex_icon2 ${IMAGE} ${DATA_IMAGES})
 example(ex_haptic ${PRIM})
 example(ex_haptic2 ex_haptic2.cpp ${NIHGUI} ${TTF} DATA ${DATA_TTF})
 example(ex_joystick_events ${PRIM} ${FONT})
-example(ex_joystick_hotplugging ${PRIM})
+example(ex_joystick_hotplugging ${PRIM} ${FONT} ${COLOR})
 example(ex_keyboard_events)
 example(ex_keyboard_focus)
 example(ex_lines ${PRIM})
@@ -189,7 +195,7 @@ example(ex_shader_target ${IMAGE} ${DATA_IMAGES} ${DATA_SHADERS})
 example(ex_subbitmap ${IMAGE} ${PRIM} ${DATA_IMAGES})
 example(ex_threads ${PRIM})
 example(ex_threads2)
-example(ex_timedwait)
+example(ex_timedwait ${FONT})
 example(ex_timer ${FONT} ${PRIM})
 example(ex_timer_pause)
 example(ex_touch_input ${PRIM})
@@ -209,7 +215,10 @@ endif()
 
 if(SUPPORT_OPENGL AND NOT SUPPORT_OPENGLES)
     example(ex_gldepth ${FONT} ${IMAGE})
-    example(ex_glext)
+    # The only user of GLU, which the library itself doesn't link.
+    if(OPENGL_GLU_FOUND)
+        example(ex_glext EXTRA_LIBS ${OPENGL_glu_LIBRARY})
+    endif()
     example(ex_opengl)
     example(ex_opengl_pixel_shader ${IMAGE})
 endif()
@@ -240,12 +249,13 @@ example(ex_mixer_pp ${AUDIO} ${ACODEC} ${PRIM} ${IMAGE} ${DATA_IMAGES} ${DATA_AU
 example(ex_record ${AUDIO} ${ACODEC} ${PRIM})
 example(ex_record_name ${AUDIO} ${ACODEC} ${PRIM} ${IMAGE} ${FONT})
 example(ex_resample_test ${AUDIO})
+example(ex_sample_finished CONSOLE ${AUDIO} ${ACODEC})
 example(ex_saw ${AUDIO})
 example(ex_stream_file CONSOLE ${AUDIO} ${ACODEC})
 example(ex_stream_seek ${AUDIO} ${ACODEC} ${PRIM} ${FONT} ${IMAGE} ${DATA_IMAGES} ${DATA_AUDIO})
 example(ex_synth ex_synth.cpp ${NIHGUI} ${AUDIO} ${TTF} DATA ${DATA_TTF})
 
-example(ex_native_filechooser ${DIALOG} ${FONT} ${IMAGE} ${COLOR})
+example(ex_native_filechooser ${DIALOG} ${FONT} ${IMAGE} ${COLOR} ${DATA_IMAGES})
 example(ex_menu ${DIALOG} ${IMAGE})
 
 # In some configurations CURL pulls in dependencies which we don't check for.

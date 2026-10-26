@@ -7,17 +7,13 @@
 #ifdef __cplusplus
 extern "C"
 {
-#endif 
+#endif
 
 #ifdef ALLEGRO_CFG_WANT_NATIVE_IMAGE_LOADER
 
 #ifdef ALLEGRO_IPHONE
 ALLEGRO_IIO_FUNC(ALLEGRO_BITMAP *, _al_iphone_load_image, (const char *filename, int flags));
 ALLEGRO_IIO_FUNC(ALLEGRO_BITMAP *, _al_iphone_load_image_f, (ALLEGRO_FILE *f, int flags));
-#endif
-
-#ifdef ALLEGRO_MACOSX
-ALLEGRO_IIO_FUNC(bool, _al_osx_register_image_loader, (void));
 #endif
 
 #endif
@@ -99,7 +95,7 @@ ALLEGRO_IIO_FUNC(bool, _al_save_webp_f, (ALLEGRO_FILE *f, ALLEGRO_BITMAP *bmp));
 
 #ifdef __cplusplus
 }
-#endif 
+#endif
 
 
 #endif

@@ -670,6 +670,9 @@ static void ogl_unlock_region_nonbb_nonfbo(ALLEGRO_BITMAP *bitmap,
    unsigned char *start_ptr;
    GLenum e;
 
+   int previous_unpack_row_length = 0;
+   glGetIntegerv(GL_UNPACK_ROW_LENGTH, &previous_unpack_row_length);
+
    if (bitmap->lock_flags & ALLEGRO_LOCK_WRITEONLY) {
       ALLEGRO_DEBUG("Unlocking non-backbuffer non-FBO WRITEONLY\n");
       start_ptr = ogl_bitmap->lock_buffer;
@@ -687,6 +690,10 @@ static void ogl_unlock_region_nonbb_nonfbo(ALLEGRO_BITMAP *bitmap,
       get_glformat(lock_format, 2),
       get_glformat(lock_format, 1),
       start_ptr);
+
+   if (!(bitmap->lock_flags & ALLEGRO_LOCK_WRITEONLY)) {
+      glPixelStorei(GL_UNPACK_ROW_LENGTH, previous_unpack_row_length);
+   }
 
    e = glGetError();
    if (e) {

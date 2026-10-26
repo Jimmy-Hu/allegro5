@@ -73,11 +73,14 @@ typedef struct ALLEGRO_DISPLAY_D3D
    int blender_state_alpha_src;
    int blender_state_alpha_dst;
 
+   IDirect3DIndexBuffer9 *loop_index_buffer;
+
    RECT scissor_state;
 
 #ifdef ALLEGRO_CFG_SHADER_HLSL
    LPD3DXEFFECT effect;
 #endif
+   LPDIRECT3DVERTEXSHADER9 primitives_shader;
 } ALLEGRO_DISPLAY_D3D;
 
 
@@ -89,8 +92,8 @@ void _al_d3d_destroy_bitmap(ALLEGRO_BITMAP *bitmap);
 void _al_d3d_update_render_state(ALLEGRO_DISPLAY *display);
 
 #ifdef ALLEGRO_CFG_SHADER_HLSL
-   bool _al_hlsl_set_projview_matrix(LPD3DXEFFECT effect,
-      const ALLEGRO_TRANSFORM *t);
+bool _al_hlsl_set_projview_matrix(LPD3DXEFFECT effect,
+   const ALLEGRO_TRANSFORM *t);
 #endif
 
 #ifdef ALLEGRO_CFG_D3DX9

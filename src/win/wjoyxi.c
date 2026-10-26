@@ -57,14 +57,14 @@
 #include <process.h>
 
 /* The official DirectX xinput.h uses SAL annotations.
- * Need the sal.h header to get rid of them. On some other platforms 
- * such as MinGW on Linux this header is lacking because it is not needed there. 
- * So, simply try to include sal.h IF we have it , and if not, hope 
- * for the best. 
+ * Need the sal.h header to get rid of them. On some other platforms
+ * such as MinGW on Linux this header is lacking because it is not needed there.
+ * So, simply try to include sal.h IF we have it , and if not, hope
+ * for the best.
  * This does no harm on msys2 either, they have a sal.h header.
- */ 
-#ifdef ALLEGRO_HAVE_SAL_H 
-#include <sal.h> 
+ */
+#ifdef ALLEGRO_HAVE_SAL_H
+#include <sal.h>
 #endif
 
 #include <xinput.h>
@@ -109,6 +109,7 @@ ALLEGRO_JOYSTICK_DRIVER _al_joydrv_xinput =
 #define XINPUT_MIN_VERSION   3
 #define XINPUT_MAX_VERSION   4
 
+#ifndef ALLEGRO_CFG_HAVE_XINPUT_CAPABILITIES_EX
 typedef struct _XINPUT_CAPABILITIES_EX
 {
    XINPUT_CAPABILITIES Capabilities;
@@ -118,6 +119,7 @@ typedef struct _XINPUT_CAPABILITIES_EX
    WORD unk1;
    DWORD unk2;
 } XINPUT_CAPABILITIES_EX, * PXINPUT_CAPABILITIES_EX;
+#endif
 
 typedef void (WINAPI *XInputEnablePROC)(BOOL);
 typedef DWORD (WINAPI *XInputSetStatePROC)(DWORD, XINPUT_VIBRATION*);
@@ -196,6 +198,11 @@ static const struct _AL_XINPUT_BUTTON_MAPPING
    { XINPUT_GAMEPAD_DPAD_DOWN, 12, "DOWN DPAD" },
    { XINPUT_GAMEPAD_DPAD_UP, 13, "UP DPAD" },
 };
+
+static bool compat_5_2_10(void) {
+   /* New layout. */
+   return _al_get_joystick_compat_version() < AL_ID(5, 2, 11, 0);
+}
 
 static void unload_xinput_module(void)
 {
@@ -363,6 +370,11 @@ static float joyxi_convert_trigger(BYTE value)
    return(((float)value) / 255.0);
 }
 
+static int joyxi_convert_button(int value)
+{
+   return value ? 32767 : 0;
+}
+
 /* Converts an XInput state to an Allegro joystick state. */
 static void joyxi_convert_state(ALLEGRO_JOYSTICK_STATE *alstate, XINPUT_STATE *xistate)
 {
@@ -370,36 +382,67 @@ static void joyxi_convert_state(ALLEGRO_JOYSTICK_STATE *alstate, XINPUT_STATE *x
    /* Wipe the allegro state clean. */
    memset(alstate, 0, sizeof(*alstate));
 
-   /* Map the buttons. Make good use of the mapping data. */
-   for (index = 0; index < MAX_BUTTONS; index++) {
-      const struct _AL_XINPUT_BUTTON_MAPPING *mapping = joyxi_button_mapping + index;
-      if (xistate->Gamepad.wButtons & mapping->flags) {
-         alstate->button[mapping->button] = 32767;
+   if (!compat_5_2_10()) {
+      alstate->button[ALLEGRO_GAMEPAD_BUTTON_A] = joyxi_convert_button(xistate->Gamepad.wButtons & XINPUT_GAMEPAD_A);
+      alstate->button[ALLEGRO_GAMEPAD_BUTTON_B] = joyxi_convert_button(xistate->Gamepad.wButtons & XINPUT_GAMEPAD_B);
+      alstate->button[ALLEGRO_GAMEPAD_BUTTON_X] = joyxi_convert_button(xistate->Gamepad.wButtons & XINPUT_GAMEPAD_X);
+      alstate->button[ALLEGRO_GAMEPAD_BUTTON_Y] = joyxi_convert_button(xistate->Gamepad.wButtons & XINPUT_GAMEPAD_Y);
+      alstate->button[ALLEGRO_GAMEPAD_BUTTON_LEFT_SHOULDER] = joyxi_convert_button(xistate->Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER);
+      alstate->button[ALLEGRO_GAMEPAD_BUTTON_RIGHT_SHOULDER] = joyxi_convert_button(xistate->Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER);
+      alstate->button[ALLEGRO_GAMEPAD_BUTTON_BACK] = joyxi_convert_button(xistate->Gamepad.wButtons & XINPUT_GAMEPAD_BACK);
+      alstate->button[ALLEGRO_GAMEPAD_BUTTON_START] = joyxi_convert_button(xistate->Gamepad.wButtons & XINPUT_GAMEPAD_START);
+      alstate->button[ALLEGRO_GAMEPAD_BUTTON_LEFT_THUMB] = joyxi_convert_button(xistate->Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_THUMB);
+      alstate->button[ALLEGRO_GAMEPAD_BUTTON_RIGHT_THUMB] = joyxi_convert_button(xistate->Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB);
+
+      float dpadx = 0;
+      float dpady = 0;
+      if (xistate->Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) {
+         dpadx += 1.;
       }
-      else {
-         alstate->button[mapping->button] = 0;
+      if (xistate->Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT) {
+         dpadx -= 1.;
       }
+      if (xistate->Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN) {
+         dpady += 1.;
+      }
+      if (xistate->Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_UP) {
+         dpady -= 1.;
+      }
+      alstate->stick[ALLEGRO_GAMEPAD_STICK_DPAD].axis[0] = dpadx;
+      alstate->stick[ALLEGRO_GAMEPAD_STICK_DPAD].axis[1] = dpady;
+      alstate->stick[ALLEGRO_GAMEPAD_STICK_LEFT_THUMB].axis[0] = joyxi_convert_axis(xistate->Gamepad.sThumbLX);
+      alstate->stick[ALLEGRO_GAMEPAD_STICK_LEFT_THUMB].axis[1] = -joyxi_convert_axis(xistate->Gamepad.sThumbLY);
+      alstate->stick[ALLEGRO_GAMEPAD_STICK_RIGHT_THUMB].axis[0] = joyxi_convert_axis(xistate->Gamepad.sThumbRX);
+      alstate->stick[ALLEGRO_GAMEPAD_STICK_RIGHT_THUMB].axis[1] = -joyxi_convert_axis(xistate->Gamepad.sThumbRY);
+      alstate->stick[ALLEGRO_GAMEPAD_STICK_LEFT_TRIGGER].axis[0] = joyxi_convert_trigger(xistate->Gamepad.bLeftTrigger);
+      alstate->stick[ALLEGRO_GAMEPAD_STICK_RIGHT_TRIGGER].axis[0] = joyxi_convert_trigger(xistate->Gamepad.bRightTrigger);
    }
-   /* Map the x and y axes of both sticks. */
-   alstate->stick[0].axis[0] = joyxi_convert_axis(xistate->Gamepad.sThumbLX);
-   alstate->stick[0].axis[1] = -joyxi_convert_axis(xistate->Gamepad.sThumbLY);
-   alstate->stick[1].axis[0] = joyxi_convert_axis(xistate->Gamepad.sThumbRX);
-   alstate->stick[1].axis[1] = -joyxi_convert_axis(xistate->Gamepad.sThumbRY);
-   /* Map the triggers as two individual sticks and axes each . */
-   alstate->stick[2].axis[0] = joyxi_convert_trigger(xistate->Gamepad.bLeftTrigger);
-   alstate->stick[3].axis[0] = joyxi_convert_trigger(xistate->Gamepad.bRightTrigger);
-   return;
+   else {
+      /* Map the buttons. Make good use of the mapping data. */
+      for (index = 0; index < MAX_BUTTONS; index++) {
+         const struct _AL_XINPUT_BUTTON_MAPPING *mapping = joyxi_button_mapping + index;
+         alstate->button[mapping->button] = joyxi_convert_button(xistate->Gamepad.wButtons & mapping->flags);
+      }
+
+      /* Map the x and y axes of both sticks. */
+      alstate->stick[0].axis[0] = joyxi_convert_axis(xistate->Gamepad.sThumbLX);
+      alstate->stick[0].axis[1] = -joyxi_convert_axis(xistate->Gamepad.sThumbLY);
+      alstate->stick[1].axis[0] = joyxi_convert_axis(xistate->Gamepad.sThumbRX);
+      alstate->stick[1].axis[1] = -joyxi_convert_axis(xistate->Gamepad.sThumbRY);
+      /* Map the triggers as two individual sticks and axes each . */
+      alstate->stick[2].axis[0] = joyxi_convert_trigger(xistate->Gamepad.bLeftTrigger);
+      alstate->stick[3].axis[0] = joyxi_convert_trigger(xistate->Gamepad.bRightTrigger);
+   }
 }
 
 
 /* Emits joystick events for the difference between the new and old joystick state. */
 static void joyxi_emit_events(
-   ALLEGRO_JOYSTICK_XINPUT *xjoy,
-   ALLEGRO_JOYSTICK_STATE *newstate, ALLEGRO_JOYSTICK_STATE *oldstate)
+   ALLEGRO_JOYSTICK_XINPUT *xjoy, ALLEGRO_JOYSTICK_STATE *newstate, ALLEGRO_JOYSTICK_STATE *oldstate, _AL_JOYSTICK_INFO *info)
 {
    int index, subdex;
    /* Send events for buttons. */
-   for (index = 0; index < MAX_BUTTONS; index++) {
+   for (index = 0; index < info->num_buttons; index++) {
       int newbutton = newstate->button[index];
       int oldbutton = oldstate->button[index];
       if (newbutton != oldbutton) {
@@ -410,8 +453,8 @@ static void joyxi_emit_events(
       }
    }
    /* Send events for the thumb pad axes and triggers . */
-   for (index = 0; index < MAX_STICKS; index++) {
-      for (subdex = 0; subdex < joyxi_axis_per_stick[index]; subdex++) {
+   for (index = 0; index < info->num_sticks; index++) {
+      for (subdex = 0; subdex < info->stick[index].num_axes; subdex++) {
          float oldaxis = oldstate->stick[index].axis[subdex];
          float newaxis = newstate->stick[index].axis[subdex];
          if (oldaxis != newaxis) {
@@ -443,7 +486,7 @@ static void joyxi_poll_connected_joystick(ALLEGRO_JOYSTICK_XINPUT *xjoy)
 
    /* If we get here translate the state and send the needed events. */
    joyxi_convert_state(&alstate, &xistate);
-   joyxi_emit_events(xjoy, &alstate, &xjoy->joystate);
+   joyxi_emit_events(xjoy, &alstate, &xjoy->joystate, &xjoy->parent.info);
 
    /* Finally copy over the states. */
    xjoy->state = xistate;
@@ -536,188 +579,38 @@ static void *joyxi_poll_disconnected_thread(ALLEGRO_THREAD *thread, void *arg)
 /* Initializes the info part of the joystick. */
 static void joyxi_init_joystick_info(ALLEGRO_JOYSTICK_XINPUT *xjoy)
 {
-   int index, subdex;
-   _AL_JOYSTICK_INFO *info = &xjoy->parent.info;
-   /* Map xinput to 4 sticks: 2 thumb pads and 2 triggers. */
-   info->num_sticks = 4;
-   /* Map xinput to 14 buttons */
-   info->num_buttons = MAX_BUTTONS;
-   /* Map button names. */
-   for (index = 0; index < MAX_BUTTONS; index++) {
-      info->button[index].name = joyxi_button_mapping[index].name;
+   /* TODO: Fill the GUID? */
+   if (!compat_5_2_10()) {
+      _al_fill_gamepad_info(&xjoy->parent.info);
    }
-   /* Map stick and axis names. */
-   for (index = 0; index < MAX_STICKS; index++) {
-      info->stick[index].name = joyxi_stick_names[index];
-      info->stick[index].num_axes = joyxi_axis_per_stick[index];
-      info->stick[index].flags = ALLEGRO_JOYFLAG_ANALOGUE;
-      for (subdex = 0; subdex < joyxi_axis_per_stick[index]; subdex++) {
-         info->stick[index].axis[subdex].name = joyxi_axis_names[index][subdex];
+   else {
+      int index, subdex;
+      _AL_JOYSTICK_INFO *info = &xjoy->parent.info;
+      /* Map xinput to 4 sticks: 2 thumb pads and 2 triggers. */
+      info->num_sticks = 4;
+      /* Map xinput to 14 buttons */
+      info->num_buttons = MAX_BUTTONS;
+      /* Map button names. */
+      for (index = 0; index < MAX_BUTTONS; index++) {
+         info->button[index].name = _al_strdup(joyxi_button_mapping[index].name);
+      }
+      /* Map stick and axis names. */
+      for (index = 0; index < MAX_STICKS; index++) {
+         info->stick[index].name = _al_strdup(joyxi_stick_names[index]);
+         info->stick[index].num_axes = joyxi_axis_per_stick[index];
+         info->stick[index].flags = ALLEGRO_JOYFLAG_ANALOGUE;
+         for (subdex = 0; subdex < joyxi_axis_per_stick[index]; subdex++) {
+            info->stick[index].axis[subdex].name = _al_strdup(joyxi_axis_names[index][subdex]);
+         }
       }
    }
-}
-
-/* Initialization API function. */
-static bool joyxi_init_joystick(void)
-{
-   int index;
-
-   if (!load_xinput_module())
-      return false;
-
-   /* Create the mutex and two condition variables. */
-   joyxi_mutex = al_create_mutex_recursive();
-   if (!joyxi_mutex)
-      return false;
-   joyxi_cond = al_create_cond();
-   if (!joyxi_cond)
-      return false;
-   joyxi_disconnected_cond = al_create_cond();
-   if (!joyxi_disconnected_cond)
-      return false;
-
-   al_lock_mutex(joyxi_mutex);
-
-   /* Fill in the joystick structs */
-   for (index = 0; index < MAX_JOYSTICKS; index++) {
-      joyxi_joysticks[index].active = false;
-      joyxi_joysticks[index].index = (DWORD)index;
-      joyxi_init_joystick_info(joyxi_joysticks + index);
-   }
-   /* Now, enable XInput*/
-   _imp_XInputEnable(TRUE);
-   /* Now check which joysticks are enabled and poll them for the first time
-    * but without sending any events.
-    */
-   for (index = 0; index < MAX_JOYSTICKS; index++) {
-      DWORD res = _imp_XInputGetCapabilities(joyxi_joysticks[index].index, 0, &joyxi_joysticks[index].capabilities);
-      joyxi_joysticks[index].active = (res == ERROR_SUCCESS);
-      if (joyxi_joysticks[index].active) {
-         res = _imp_XInputGetState(joyxi_joysticks[index].index, &joyxi_joysticks[index].state);
-         joyxi_joysticks[index].active = (res == ERROR_SUCCESS);
-      }
-   }
-   /* Now start two polling background thread, since XInput is a polled API.
-    * The first thread will poll the active joysticks frequently, the second
-    * thread will poll the inactive joysticks infrequently.
-    * This is done like this to preserve performance.
-    */
-   joyxi_thread = al_create_thread(joyxi_poll_thread, NULL);
-   joyxi_disconnected_thread = al_create_thread(joyxi_poll_disconnected_thread, NULL);
-
-   al_unlock_mutex(joyxi_mutex);
-
-   if (joyxi_thread) al_start_thread(joyxi_thread);
-   if (joyxi_disconnected_thread) al_start_thread(joyxi_disconnected_thread);
-
-   return (joyxi_thread != NULL) && (joyxi_disconnected_thread != NULL);
-}
-
-
-static void joyxi_exit_joystick(void)
-{
-   int index;
-   void *ret_value = NULL;
-   if (!joyxi_mutex) return;
-   if (!joyxi_cond) return;
-   if (!joyxi_thread) return;
-   /* Request the event thread to shut down, signal the condition, then join the thread. */
-   al_set_thread_should_stop(joyxi_thread);
-   al_signal_cond(joyxi_cond);
-   al_join_thread(joyxi_thread, &ret_value);
-   al_set_thread_should_stop(joyxi_disconnected_thread);
-   al_signal_cond(joyxi_disconnected_cond);
-   al_join_thread(joyxi_disconnected_thread, &ret_value);
-
-   /* clean it all up. */
-   al_destroy_thread(joyxi_disconnected_thread);
-   al_destroy_cond(joyxi_disconnected_cond);
-   al_destroy_thread(joyxi_thread);
-   al_destroy_cond(joyxi_cond);
-
-   al_lock_mutex(joyxi_mutex);
-   /* Disable xinput */
-   _imp_XInputEnable(FALSE);
-   /* Wipe the joystick structs */
-   for (index = 0; index < MAX_JOYSTICKS; index++) {
-      joyxi_joysticks[index].active = false;
-   }
-   al_unlock_mutex(joyxi_mutex);
-   al_destroy_mutex(joyxi_mutex);
-
-   unload_xinput_module();
-}
-
-
-static bool joyxi_reconfigure_joysticks(void)
-{
-   int index;
-   al_lock_mutex(joyxi_mutex);
-   for (index = 0; index < MAX_JOYSTICKS; index++) {
-      DWORD res = _imp_XInputGetCapabilities(joyxi_joysticks[index].index, 0, &joyxi_joysticks[index].capabilities);
-      joyxi_joysticks[index].active = (res == ERROR_SUCCESS);
-      if (joyxi_joysticks[index].active) {
-         res = _imp_XInputGetState(joyxi_joysticks[index].index, &joyxi_joysticks[index].state);
-         joyxi_joysticks[index].active = (res == ERROR_SUCCESS);
-      }
-   }
-   al_unlock_mutex(joyxi_mutex);
-   /** Signal the conditions so new events are sent immediately for the new joysticks. */
-   al_signal_cond(joyxi_cond);
-   /** Signal the disconnected thread in case another joystick got connected. */
-   al_signal_cond(joyxi_disconnected_cond);
-   return true;
-}
-
-static int joyxi_get_num_joysticks(void)
-{
-   int result = 0, index;
-   for (index = 0; index < MAX_JOYSTICKS; index++) {
-      if (joyxi_joysticks[index].active)
-         result++;
-   }
-   return result;
-}
-
-static ALLEGRO_JOYSTICK *joyxi_get_joystick(int num)
-{
-   int al_number = 0, index;
-   /* Use a linear scan, so the first active joystick ends up as the first
-    * allegro joystick etc. */
-   for (index = 0; index < MAX_JOYSTICKS; index++) {
-      if (joyxi_joysticks[index].active) {
-         if (num == al_number)
-            return &joyxi_joysticks[index].parent;
-         else
-            al_number++;
-      }
-   }
-   return NULL;
-}
-
-
-static void joyxi_release_joystick(ALLEGRO_JOYSTICK *joy)
-{
-   /* No need to do anything. */
-   (void)joy;
-}
-
-static void joyxi_get_joystick_state(ALLEGRO_JOYSTICK *joy, ALLEGRO_JOYSTICK_STATE *ret_state)
-{
-   ALLEGRO_JOYSTICK_XINPUT *xjoy = (ALLEGRO_JOYSTICK_XINPUT *)joy;
-   ASSERT(xjoy);
-   ASSERT(ret_state);
-   /* Copy the data with the mutex
-    * locked to prevent changes during copying. */
-   al_lock_mutex(joyxi_mutex);
-   (*ret_state) = xjoy->joystate;
-   al_unlock_mutex(joyxi_mutex);
 }
 
 
 // Source: https://github.com/xan105/node-xinput-ffi/blob/master/lib/util/HardwareID.js
 static const char *joyxi_lookup_device_name(WORD vid, WORD pid)
 {
+   ALLEGRO_DEBUG("Looking up name for joystick vendor: %d, product: %d\n", vid, pid);
    if (vid == 0x045E) {
       switch (pid) {
          case 0x028E: return "Xbox360 Controller";
@@ -779,28 +672,189 @@ static const char *joyxi_lookup_device_name(WORD vid, WORD pid)
 }
 
 
+static void joyxi_set_name(ALLEGRO_JOYSTICK_XINPUT *xjoy)
+{
+   if (_imp_XInputGetCapabilitiesEx) {
+      XINPUT_CAPABILITIES_EX xicapas;
+      int res = _imp_XInputGetCapabilitiesEx(1, xjoy->index, 0, &xicapas);
+      if (res == ERROR_SUCCESS) {
+         const char *device_name = joyxi_lookup_device_name(xicapas.VendorId, xicapas.ProductId);
+         if (device_name[0] != '\0')
+            sprintf(xjoy->name, device_name);
+         else
+            sprintf(xjoy->name, "XInput Joystick %d", (int)xjoy->index);
+         return;
+      }
+   }
+   sprintf(xjoy->name, "XInput Joystick %d", (int)xjoy->index);
+}
+
+
+/* Initialization API function. */
+static bool joyxi_init_joystick(void)
+{
+   int index;
+
+   if (!load_xinput_module())
+      return false;
+
+   /* Create the mutex and two condition variables. */
+   joyxi_mutex = al_create_mutex_recursive();
+   if (!joyxi_mutex)
+      return false;
+   joyxi_cond = al_create_cond();
+   if (!joyxi_cond)
+      return false;
+   joyxi_disconnected_cond = al_create_cond();
+   if (!joyxi_disconnected_cond)
+      return false;
+
+   al_lock_mutex(joyxi_mutex);
+
+   /* Fill in the joystick structs */
+   for (index = 0; index < MAX_JOYSTICKS; index++) {
+      joyxi_joysticks[index].active = false;
+      joyxi_joysticks[index].index = (DWORD)index;
+      joyxi_init_joystick_info(joyxi_joysticks + index);
+      joyxi_set_name(joyxi_joysticks + index);
+   }
+   /* Now, enable XInput*/
+   _imp_XInputEnable(TRUE);
+   /* Now check which joysticks are enabled and poll them for the first time
+    * but without sending any events.
+    */
+   for (index = 0; index < MAX_JOYSTICKS; index++) {
+      DWORD res = _imp_XInputGetCapabilities(joyxi_joysticks[index].index, 0, &joyxi_joysticks[index].capabilities);
+      joyxi_joysticks[index].active = (res == ERROR_SUCCESS);
+      if (joyxi_joysticks[index].active) {
+         res = _imp_XInputGetState(joyxi_joysticks[index].index, &joyxi_joysticks[index].state);
+         joyxi_joysticks[index].active = (res == ERROR_SUCCESS);
+      }
+   }
+   /* Now start two polling background thread, since XInput is a polled API.
+    * The first thread will poll the active joysticks frequently, the second
+    * thread will poll the inactive joysticks infrequently.
+    * This is done like this to preserve performance.
+    */
+   joyxi_thread = al_create_thread(joyxi_poll_thread, NULL);
+   joyxi_disconnected_thread = al_create_thread(joyxi_poll_disconnected_thread, NULL);
+
+   al_unlock_mutex(joyxi_mutex);
+
+   if (joyxi_thread) al_start_thread(joyxi_thread);
+   if (joyxi_disconnected_thread) al_start_thread(joyxi_disconnected_thread);
+
+   return (joyxi_thread != NULL) && (joyxi_disconnected_thread != NULL);
+}
+
+
+static void joyxi_exit_joystick(void)
+{
+   int index;
+   void *ret_value = NULL;
+   if (!joyxi_mutex) return;
+   if (!joyxi_cond) return;
+   if (!joyxi_thread) return;
+   /* Request the event thread to shut down, signal the condition, then join the thread. */
+   al_set_thread_should_stop(joyxi_thread);
+   al_signal_cond(joyxi_cond);
+   al_join_thread(joyxi_thread, &ret_value);
+   al_set_thread_should_stop(joyxi_disconnected_thread);
+   al_signal_cond(joyxi_disconnected_cond);
+   al_join_thread(joyxi_disconnected_thread, &ret_value);
+
+   /* clean it all up. */
+   al_destroy_thread(joyxi_disconnected_thread);
+   al_destroy_cond(joyxi_disconnected_cond);
+   al_destroy_thread(joyxi_thread);
+   al_destroy_cond(joyxi_cond);
+
+   al_lock_mutex(joyxi_mutex);
+   /* Disable xinput */
+   _imp_XInputEnable(FALSE);
+   /* Wipe the joystick structs */
+   for (index = 0; index < MAX_JOYSTICKS; index++) {
+      joyxi_joysticks[index].active = false;
+      _al_destroy_joystick_info(&joyxi_joysticks[index].parent.info);
+   }
+   al_unlock_mutex(joyxi_mutex);
+   al_destroy_mutex(joyxi_mutex);
+
+   unload_xinput_module();
+}
+
+
+static bool joyxi_reconfigure_joysticks(void)
+{
+   int index;
+   al_lock_mutex(joyxi_mutex);
+   for (index = 0; index < MAX_JOYSTICKS; index++) {
+      DWORD res = _imp_XInputGetCapabilities(joyxi_joysticks[index].index, 0, &joyxi_joysticks[index].capabilities);
+      joyxi_joysticks[index].active = (res == ERROR_SUCCESS);
+      if (joyxi_joysticks[index].active) {
+         res = _imp_XInputGetState(joyxi_joysticks[index].index, &joyxi_joysticks[index].state);
+         joyxi_joysticks[index].active = (res == ERROR_SUCCESS);
+         joyxi_set_name(joyxi_joysticks + index);
+      }
+   }
+   al_unlock_mutex(joyxi_mutex);
+   /** Signal the conditions so new events are sent immediately for the new joysticks. */
+   al_signal_cond(joyxi_cond);
+   /** Signal the disconnected thread in case another joystick got connected. */
+   al_signal_cond(joyxi_disconnected_cond);
+   return true;
+}
+
+static int joyxi_get_num_joysticks(void)
+{
+   int result = 0, index;
+   for (index = 0; index < MAX_JOYSTICKS; index++) {
+      if (joyxi_joysticks[index].active)
+         result++;
+   }
+   return result;
+}
+
+static ALLEGRO_JOYSTICK *joyxi_get_joystick(int num)
+{
+   int al_number = 0, index;
+   /* Use a linear scan, so the first active joystick ends up as the first
+    * allegro joystick etc. */
+   for (index = 0; index < MAX_JOYSTICKS; index++) {
+      if (joyxi_joysticks[index].active) {
+         if (num == al_number)
+            return &joyxi_joysticks[index].parent;
+         else
+            al_number++;
+      }
+   }
+   return NULL;
+}
+
+
+static void joyxi_release_joystick(ALLEGRO_JOYSTICK *joy)
+{
+   /* No need to do anything. */
+   (void)joy;
+}
+
+static void joyxi_get_joystick_state(ALLEGRO_JOYSTICK *joy, ALLEGRO_JOYSTICK_STATE *ret_state)
+{
+   ALLEGRO_JOYSTICK_XINPUT *xjoy = (ALLEGRO_JOYSTICK_XINPUT *)joy;
+   ASSERT(xjoy);
+   ASSERT(ret_state);
+   /* Copy the data with the mutex
+    * locked to prevent changes during copying. */
+   al_lock_mutex(joyxi_mutex);
+   (*ret_state) = xjoy->joystate;
+   al_unlock_mutex(joyxi_mutex);
+}
+
+
 static const char *joyxi_get_name(ALLEGRO_JOYSTICK *joy)
 {
    ALLEGRO_JOYSTICK_XINPUT *xjoy = (ALLEGRO_JOYSTICK_XINPUT *)joy;
    ASSERT(xjoy);
-
-   if (xjoy->name[0] == '\0') {
-      if (_imp_XInputGetCapabilitiesEx) {
-         XINPUT_CAPABILITIES_EX xicapas;
-         int res = _imp_XInputGetCapabilitiesEx(1, xjoy->index, 0, &xicapas);
-         if (res == ERROR_SUCCESS) {
-            const char *device_name = joyxi_lookup_device_name(xicapas.VendorId, xicapas.ProductId);
-            if (device_name[0] != '\0')
-               sprintf(xjoy->name, device_name);
-            else
-               sprintf(xjoy->name, "XInput Joystick vendor: %x product: %x", xicapas.VendorId, xicapas.ProductId);
-            return xjoy->name;
-         }
-      }
-
-      sprintf(xjoy->name, "XInput Joystick %d", xjoy->index);
-   }
-
    return xjoy->name;
 }
 

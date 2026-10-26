@@ -3,9 +3,10 @@
 
 #include "allegro5/allegro.h"
 #include "allegro5/transformations.h"
-#include "allegro5/display.h"
 #include "allegro5/bitmap.h"
+#include "allegro5/display.h"
 #include "allegro5/internal/aintern_events.h"
+#include "allegro5/internal/aintern_primitives.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -24,7 +25,7 @@ struct ALLEGRO_DISPLAY_INTERFACE
    void (*draw_pixel)(ALLEGRO_DISPLAY *d, float x, float y, ALLEGRO_COLOR *color);
    void (*flip_display)(ALLEGRO_DISPLAY *d);
    void (*update_display_region)(ALLEGRO_DISPLAY *d, int x, int y,
-   	int width, int height);
+           int width, int height);
    bool (*acknowledge_resize)(ALLEGRO_DISPLAY *d);
    bool (*resize_display)(ALLEGRO_DISPLAY *d, int width, int height);
    void (*quick_size)(ALLEGRO_DISPLAY *d);
@@ -61,10 +62,10 @@ struct ALLEGRO_DISPLAY_INTERFACE
    bool (*get_window_constraints)(ALLEGRO_DISPLAY *display,  int *min_w, int *min_h, int *max_w, int *max_h);
    bool (*set_display_flag)(ALLEGRO_DISPLAY *display, int flag, bool onoff);
    void (*set_window_title)(ALLEGRO_DISPLAY *display, const char *title);
-   
+
    void (*flush_vertex_cache)(ALLEGRO_DISPLAY *d);
    void* (*prepare_vertex_cache)(ALLEGRO_DISPLAY *d, int num_new_vertices);
-   
+
    void (*update_transformation)(ALLEGRO_DISPLAY* d, ALLEGRO_BITMAP *target);
 
    /* Unused */
@@ -72,33 +73,41 @@ struct ALLEGRO_DISPLAY_INTERFACE
 
    void (*acknowledge_drawing_halt)(ALLEGRO_DISPLAY *d);
    void (*acknowledge_drawing_resume)(ALLEGRO_DISPLAY *d);
-      
+
    void (*set_display_option)(ALLEGRO_DISPLAY *display, int option, int val);
 
    void (*clear_depth_buffer)(ALLEGRO_DISPLAY *display, float x);
    void (*update_render_state)(ALLEGRO_DISPLAY *display);
-   
+
    char *(*get_clipboard_text)(ALLEGRO_DISPLAY *display);
    bool  (*set_clipboard_text)(ALLEGRO_DISPLAY *display, const char *text);
    bool  (*has_clipboard_text)(ALLEGRO_DISPLAY *display);
 
    /* Issue #725 */
    void (*apply_window_constraints)(ALLEGRO_DISPLAY *display, bool onoff);
+
+   /* Primitives */
+   int (*draw_prim)(ALLEGRO_BITMAP *target, ALLEGRO_BITMAP *texture, const void *vtxs, const ALLEGRO_VERTEX_DECL *decl, int start, int end, int type);
+   int (*draw_prim_indexed)(ALLEGRO_BITMAP *target, ALLEGRO_BITMAP *texture, const void *vtxs, const ALLEGRO_VERTEX_DECL *decl, const int *indices, int num_vtx, int type);
+
+   bool  (*create_vertex_buffer)(ALLEGRO_VERTEX_BUFFER *buf, const void *initial_data, size_t num_vertices, int flags);
+   void  (*destroy_vertex_buffer)(ALLEGRO_VERTEX_BUFFER *buf);
+   void *(*lock_vertex_buffer)(ALLEGRO_VERTEX_BUFFER *buf);
+   void  (*unlock_vertex_buffer)(ALLEGRO_VERTEX_BUFFER *buf);
+
+   bool (*create_vertex_decl)(ALLEGRO_DISPLAY *display, ALLEGRO_VERTEX_DECL *decl);
+
+   bool  (*create_index_buffer)(ALLEGRO_INDEX_BUFFER *buf, const void *initial_data, size_t num_indices, int flags);
+   void  (*destroy_index_buffer)(ALLEGRO_INDEX_BUFFER *buf);
+   void *(*lock_index_buffer)(ALLEGRO_INDEX_BUFFER *buf);
+   void  (*unlock_index_buffer)(ALLEGRO_INDEX_BUFFER *buf);
+
+   int (*draw_vertex_buffer)(ALLEGRO_BITMAP* target, ALLEGRO_BITMAP* texture, ALLEGRO_VERTEX_BUFFER* vertex_buffer, int start, int end, int type);
+   int (*draw_indexed_buffer)(ALLEGRO_BITMAP* target, ALLEGRO_BITMAP* texture, ALLEGRO_VERTEX_BUFFER* vertex_buffer, ALLEGRO_INDEX_BUFFER* index_buffer, int start, int end, int type);
 };
 
 
 struct ALLEGRO_OGL_EXTRAS;
-
-typedef struct ALLEGRO_BLENDER
-{
-   int blend_op;
-   int blend_source;
-   int blend_dest;
-   int blend_alpha_op;
-   int blend_alpha_source;
-   int blend_alpha_dest;
-   ALLEGRO_COLOR blend_color;
-} ALLEGRO_BLENDER;
 
 typedef struct _ALLEGRO_RENDER_STATE {
    int write_mask;

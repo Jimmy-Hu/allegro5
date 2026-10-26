@@ -105,6 +105,11 @@ static void sdl_heartbeat(void)
             case SDL_JOYBUTTONUP:
             case SDL_JOYDEVICEADDED:
             case SDL_JOYDEVICEREMOVED:
+            case SDL_CONTROLLERAXISMOTION:
+            case SDL_CONTROLLERBUTTONDOWN:
+            case SDL_CONTROLLERBUTTONUP:
+            case SDL_CONTROLLERDEVICEADDED:
+            case SDL_CONTROLLERDEVICEREMOVED:
                 _al_sdl_joystick_event(&events[i]);
                 break;
             case SDL_QUIT:
@@ -187,7 +192,7 @@ static void sdl_shutdown_system(void)
       al_destroy_display(d);
    }
    _al_vector_free(&s->system.displays);
-   
+
    al_destroy_mutex(s->mutex);
    al_free(s);
    SDL_Quit();
@@ -294,7 +299,7 @@ static bool sdl_get_monitor_info(int adapter, ALLEGRO_MONITOR_INFO *info)
 
 static ALLEGRO_MOUSE_CURSOR* sdl_create_mouse_cursor(ALLEGRO_BITMAP *sprite, int xfocus, int yfocus)
 {
-   SDL_Cursor *cursor;
+   SDL_Cursor *cursor = NULL;
    ALLEGRO_MOUSE_CURSOR_SDL *sdl_cursor;
 
    int w = al_get_bitmap_width(sprite);

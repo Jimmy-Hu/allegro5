@@ -5,22 +5,7 @@
 # - some documentation targets still missing
 # - installing documentation
 #
-cmake_minimum_required(VERSION 3.0)
-if(COMMAND cmake_policy)
-    cmake_policy(SET CMP0003 NEW)
-    if(POLICY CMP0026)
-        cmake_policy(SET CMP0026 NEW)
-    endif()
-    if(POLICY CMP0072)
-        cmake_policy(SET CMP0072 NEW)
-    endif()
-    if(POLICY CMP0060)
-        cmake_policy(SET CMP0060 NEW)
-    endif()
-    if(POLICY CMP0075)
-        cmake_policy(SET CMP0075 NEW)
-    endif()
-endif(COMMAND cmake_policy)
+cmake_minimum_required(VERSION 3.12...4.0)
 
 
 #-----------------------------------------------------------------------------#
@@ -59,16 +44,23 @@ project(${ALLEGRO_PROJECT_NAME}${ALLEGRO_PROJECT_SUFFIX}
     HOMEPAGE_URL "https://github.com/liballeg/allegro5"
 )
 
+include(GNUInstallDirs)
+
 set(ALLEGRO_SOVERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR})
 
-if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING
-      "Choose the type of build, options are: None Debug Release RelWithDebInfo MinSizeRel Profile."
-      FORCE)
+get_property(isMultiConfig GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+if(isMultiConfig)
+    if(NOT CMAKE_CONFIGURATION_TYPES)
+        set(CMAKE_CONFIGURATION_TYPES "Debug;Release;RelWithDebInfo;MinSizeRel;Profile" CACHE STRING
+            "Semicolon separated list of supported configuration types." FORCE)
+    endif()
+else()
+    if(NOT CMAKE_BUILD_TYPE)
+        set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING
+            "Choose the type of build, options are: None Debug Release RelWithDebInfo MinSizeRel Profile."
+            FORCE)
+    endif()
 endif()
-# Restrict configuration types to the selected build type.
-# Note: This needs to be done before the project command
-set(CMAKE_CONFIGURATION_TYPES "${CMAKE_BUILD_TYPE}" CACHE INTERNAL "internal")
 
 if(ANDROID)
     option(WANT_ANDROID_LEGACY "Build for Android 4 (1.6)" OFF)
@@ -128,9 +120,12 @@ if(NOT IPHONE)
     set(BUILD_SHARED_LIBS ${SHARED})    # actual CMake variable
 endif(NOT IPHONE)
 
-# On some 64-bit platforms, libraries should be installed into `lib64'
-# instead of `lib'.  Set this to 64 to do that.
-set(LIB_SUFFIX "" CACHE STRING "Suffix for 'lib' directories, e.g. '64'")
+if(DEFINED LIB_SUFFIX)
+    message(WARNING
+        "LIB_SUFFIX is no longer recognized, "
+        "use the standard CMAKE_INSTALL_LIBDIR instead"
+    )
+endif()
 
 option(WANT_FRAMEWORKS "Want frameworks on Mac OS X" off)
 option(WANT_EMBED
@@ -221,7 +216,8 @@ endif()
 #
 
 if(NOT IPHONE)
-    option(WANT_ALLOW_SSE "Allow compiler to use SSE instructions (x86)" on)
+    set(WANT_ALLOW_SSE off CACHE STRING "Allow compiler to use SSE instructions (x86)")
+    set_property(CACHE WANT_ALLOW_SSE PROPERTY STRINGS off sse sse2 avx avx2)
 endif(NOT IPHONE)
 
 option(NO_FPU "No floating point unit" off)
@@ -390,6 +386,9 @@ if(ALLEGRO_SDL)
    set(ALLEGRO_MACOSX 0)
    set(WANT_X11 off)
    include(FindSDL2)
+   if (NOT SDL2_FOUND)
+       message(FATAL_ERROR "SDL support requires SDL2 library.")
+   endif()
 endif(ALLEGRO_SDL)
 
 # Tell the compiler it can use SSE instructions on x86 architectures.
@@ -406,24 +405,18 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "i.86")
     set(ARCH_X86 1)
 endif()
 # CMake reports "x86" on my Windows Vista machine
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86")
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86|AMD64")
     set(ARCH_X86 1)
 endif()
 
 if(ARCH_X86 AND WANT_ALLOW_SSE)
-    if(COMPILER_GCC_OR_CLANG)
-        message(STATUS "Allowing GCC/Clang to use SSE instructions")
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -msse")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse")
-    endif(COMPILER_GCC_OR_CLANG)
-
-    # Flags for other compilers should be added here.
-
-    if(COMPILER_MSVC)
-        message(STATUS "Allowing MSVC to use SSE instructions")
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /arch:SSE")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /arch:SSE")
-    endif(COMPILER_MSVC)
+    string(TOUPPER ${WANT_ALLOW_SSE} arch_uc)
+    message(STATUS "Allowing compiler to use ${arch_uc} instructions")
+    add_compile_options(
+        $<$<BOOL:${COMPILER_GCC_OR_CLANG}>:-m${WANT_ALLOW_SSE}>
+        $<$<BOOL:${COMPILER_MSVC}>:/arch:${arch_uc}>
+        # Flags for other compilers should be added here.
+        )
 endif()
 
 #-----------------------------------------------------------------------------#
@@ -624,14 +617,20 @@ if(WANT_OPENGL)
     endif()
 
     if(GL_REAL_BUILD_TYPE MATCHES "gl$")
-        if(OPENGL_FOUND AND OPENGL_GLU_FOUND)
+        if(OPENGL_FOUND)
             set(SUPPORT_OPENGL 1)
             set(ALLEGRO_CFG_OPENGL 1)
             set(ALLEGRO_CFG_OPENGL_FIXED_FUNCTION 1)
             # We assume that the OpenGL library is not very old.
             set(ALLEGRO_CFG_OPENGL_PROGRAMMABLE_PIPELINE 1)
             if(OPENGL_opengl_LIBRARY) # prefer GLVND if available
-                set(OPENGL_LIBRARIES ${OPENGL_opengl_LIBRARY} ${OPENGL_glu_LIBRARY})
+                set(OPENGL_LIBRARIES ${OPENGL_opengl_LIBRARY})
+            endif()
+            # Allegro doesn't use GLU, but FindOpenGL adds it to OPENGL_LIBRARIES
+            # whenever it is found, which made libGLU a runtime requirement on
+            # Linux. Drop it. (On macOS GL and GLU are the same OpenGL.framework.)
+            if(OPENGL_glu_LIBRARY AND NOT OPENGL_glu_LIBRARY STREQUAL OPENGL_gl_LIBRARY)
+                list(REMOVE_ITEM OPENGL_LIBRARIES ${OPENGL_glu_LIBRARY})
             endif()
             include_directories(SYSTEM ${OPENGL_INCLUDE_DIR})
             set(OPENGL_SUMMARY "- OpenGL: Desktop")
@@ -683,7 +682,7 @@ if(WANT_OPENGL)
             endif()
 
             if(NOT IPHONE)
-	        include_directories(SYSTEM ${OPENGLES_INCLUDE_DIR})
+                include_directories(SYSTEM ${OPENGLES_INCLUDE_DIR})
             endif()
         else(OPENGLES2_FOUND)
             if(GL_BUILD_TYPE MATCHES "auto")
@@ -714,7 +713,7 @@ if(WANT_OPENGL)
             set(OPENGL_SUMMARY "- OpenGL: ES 1.1")
             set(OPENGL_LIBRARIES ${OPENGLES1_LIBRARIES})
             if(NOT IPHONE)
-	        include_directories(SYSTEM ${OPENGLES1_INCLUDE_DIR})
+                include_directories(SYSTEM ${OPENGLES1_INCLUDE_DIR})
             endif()
         endif(OPENGLES1_FOUND)
 
@@ -735,6 +734,22 @@ if(UNIX) # includes MACOSX
             message(FATAL_ERROR
                 "Unix port requires pthreads support, not detected.")
         endif(NOT CMAKE_USE_PTHREADS_INIT)
+
+        set(CMAKE_REQUIRED_LIBRARIES Threads::Threads)
+        run_c_compile_test("
+            #define _XOPEN_SOURCE 600
+            #include <pthread.h>
+            #include <time.h>
+            int main(void) {
+                pthread_condattr_t attr;
+                pthread_condattr_init(&attr);
+                pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
+                return 0;
+            }
+            "
+            ALLEGRO_CFG_HAVE_PTHREAD_CONDATTR_SETCLOCK
+        )
+        set(CMAKE_REQUIRED_LIBRARIES)
     endif()
 endif(UNIX)
 
@@ -868,6 +883,15 @@ if(WIN32)
 
     # Xinput support for xbox compatible controllers.
     if(XINPUT_FOUND)
+        run_c_compile_test("
+            #include <xinput.h>
+            XINPUT_CAPABILITIES_EX x;
+            int main(void) { return 0; }"
+            HAVE_XINPUT_CAPABILITIES_EX
+        )
+        if(HAVE_XINPUT_CAPABILITIES_EX)
+            set(ALLEGRO_CFG_HAVE_XINPUT_CAPABILITIES_EX 1)
+        endif()
         set(SUPPORT_XINPUT 1)
         set(ALLEGRO_CFG_XINPUT 1)
     endif(XINPUT_FOUND)
@@ -876,18 +900,18 @@ if(WIN32)
         if(D3D9_FOUND)
             set(SUPPORT_D3D 1)
             set(ALLEGRO_CFG_D3D 1)
-        endif(D3D9_FOUND)
-    endif(WANT_D3D)
+        endif()
+    endif()
 
     if(SUPPORT_D3D)
         if(D3DX9_FOUND)
             include_directories(BEFORE ${D3DX9_INCLUDE_DIR})
             set(ALLEGRO_CFG_D3DX9 1)
         else()
-            message("D3DX9 not found. You will not be able to compress or "
-                    "decompress textures on the GPU.")
+            message("D3DX9 not found, necessary for custom shaders and "
+                    "compressed textures.")
         endif()
-    endif(SUPPORT_D3D)
+    endif()
 
     if(WANT_D3D9EX AND SUPPORT_D3D)
         set(ALLEGRO_CFG_D3D9EX 1)
@@ -949,9 +973,13 @@ if(ALLEGRO_MACOSX)
     find_library(APPKIT_LIBRARY AppKit)
     find_library(IOKIT_LIBRARY IOKit)
     find_library(COREVIDEO_LIBRARY CoreVideo)
+    find_library(CARBON_LIBRARY Carbon)
+    find_library(UNIFORMTYPEIDENTIFIERS_LIBRARY UniformTypeIdentifiers)
     list(APPEND PLATFORM_LIBS ${APPKIT_LIBRARY})
     list(APPEND PLATFORM_LIBS ${IOKIT_LIBRARY})
     list(APPEND PLATFORM_LIBS ${COREVIDEO_LIBRARY})
+    list(APPEND PLATFORM_LIBS ${CARBON_LIBRARY})
+    list(APPEND PLATFORM_LIBS ${UNIFORMTYPEIDENTIFIERS_LIBRARY})
 endif(ALLEGRO_MACOSX)
 
 if(IPHONE)
@@ -1047,6 +1075,9 @@ if(NOT WANT_MONOLITH)
         "${LIBRARY_CFLAGS} -DALLEGRO_SRC"
         "${PLATFORM_LIBS}"
         )
+    target_include_directories(allegro INTERFACE
+        "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include;${PROJECT_BINARY_DIR}/include>"
+        )
 endif(NOT WANT_MONOLITH)
 
 # Addons and examples should link with this target.
@@ -1081,6 +1112,9 @@ if(WANT_MONOLITH)
         "${MONOLITH_SOURCES};${ALLEGRO_PUBLIC_HEADERS}"
         "${LIBRARY_CFLAGS} -DALLEGRO_SRC ${MONOLITH_DEFINES}"
         "${PLATFORM_LIBS};${MONOLITH_LIBRARIES}"
+        )
+    target_include_directories(allegro_monolith INTERFACE
+        "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include;${PROJECT_BINARY_DIR}/include>"
         )
 
     set(ALLEGRO_MONOLITH_LINK_WITH allegro_monolith)
@@ -1218,7 +1252,7 @@ if(INSTALL_PKG_CONFIG_FILES)
                 @ONLY
                 )
             install(FILES ${LIBRARY_OUTPUT_PATH}/pkgconfig/${outname}
-                DESTINATION "lib${LIB_SUFFIX}/pkgconfig"
+                DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig"
                 )
         endforeach(name)
     endforeach(versuffix)
@@ -1230,8 +1264,8 @@ include(CMakePackageConfigHelpers)
 set(PKG_NAME "Allegro")
 string(TOLOWER ${PKG_NAME} PKG_NAME_LOWER)
 
-set(PKG_CONFIG_INSTALL_DIR "lib/cmake/${PKG_NAME_LOWER}")
-set(PKG_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+set(PKG_CONFIG_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/${PKG_NAME_LOWER}")
+set(PKG_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/cmake")
 set(PKG_TARGETS_NAME "${PKG_NAME}Targets")
 set(PKG_CONFIG_FILE "${PKG_GENERATED_DIR}/${PKG_NAME}Config.cmake")
 set(PKG_VERSION_FILE "${PKG_GENERATED_DIR}/${PKG_NAME}ConfigVersion.cmake")
@@ -1248,10 +1282,6 @@ write_basic_package_version_file(${PKG_VERSION_FILE}
   COMPATIBILITY AnyNewerVersion
 )
 install(
-  TARGETS ${ALLEGRO_TARGETS}
-  EXPORT ${PKG_TARGETS_NAME}
-)
-install(
   EXPORT ${PKG_TARGETS_NAME}
   NAMESPACE ${PKG_NAME}::
   DESTINATION ${PKG_CONFIG_INSTALL_DIR}
@@ -1261,6 +1291,25 @@ install(
   DESTINATION ${PKG_CONFIG_INSTALL_DIR}
 )
 
+# Export build tree to ease development and debugging
+export(EXPORT ${PKG_TARGETS_NAME}
+  FILE "${PKG_GENERATED_DIR}/${PKG_NAME}Targets.cmake"
+  NAMESPACE ${PKG_NAME}::
+)
+
+#-----------------------------------------------------------------------------#
+#
+#   Misc installation
+#
+#-----------------------------------------------------------------------------#
+
+# This lives here instead of add_our_library primarily because we only set up
+# the PKG_TARGETS_NAME here.
+install(
+  TARGETS ${ALLEGRO_TARGETS}
+  EXPORT ${PKG_TARGETS_NAME}
+  FRAMEWORK DESTINATION "${FRAMEWORK_INSTALL_PREFIX}"
+)
 
 #-----------------------------------------------------------------------------#
 #

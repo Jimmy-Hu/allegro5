@@ -85,7 +85,7 @@ endfunction(sanitize_cmake_link_flags)
 function(add_our_library target framework_name sources extra_flags link_with)
     # BUILD_SHARED_LIBS controls whether this is a shared or static library.
     add_library(${target} ${sources})
-    target_include_directories(${target} INTERFACE $<INSTALL_INTERFACE:include>)
+    target_include_directories(${target} INTERFACE $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
     list(APPEND ALLEGRO_TARGETS "${target}")
     list(REMOVE_DUPLICATES ALLEGRO_TARGETS)
     set(ALLEGRO_TARGETS "${ALLEGRO_TARGETS}" CACHE INTERNAL "internal")
@@ -110,7 +110,7 @@ function(add_our_library target framework_name sources extra_flags link_with)
         if(WANT_STATIC_RUNTIME)
             # TODO: The -static is a bit of a hack for MSYS2 to force the static linking of pthreads.
             # There has to be a better way.
-            set(extra_link_flags "-static-libgcc -static-libstdc++ -static -lpthread")
+            set(extra_link_flags "-static-libgcc -static-libstdc++ -static -lpthread -Wl,--exclude-libs=libpthread.a -Wl,--exclude-libs=libgcc_eh.a")
         endif()
     endif()
 
@@ -121,7 +121,7 @@ function(add_our_library target framework_name sources extra_flags link_with)
     if(NOT BUILD_SHARED_LIBS)
         set(static_flag "-DALLEGRO_STATICLINK")
     endif(NOT BUILD_SHARED_LIBS)
-    
+
     if(NOT ANDROID)
         set_target_properties(${target}
             PROPERTIES
@@ -137,7 +137,7 @@ function(add_our_library target framework_name sources extra_flags link_with)
             )
         set_property(GLOBAL APPEND PROPERTY JNI_LIBS ${target})
     endif(NOT ANDROID)
-    
+
     # Construct the output name.
     set(output_name ${target})
     append_lib_type_suffix(output_name)
@@ -187,6 +187,8 @@ macro(add_our_addon_library target framework_name sources extra_flags link_with)
         set(MONOLITH_DEFINES "${MONOLITH_DEFINES} ${extra_flags}")
     else()
         add_our_library(${target} ${framework_name} "${sources}" "${extra_flags}" "${link_with}")
+        target_include_directories(${target} INTERFACE
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
         if(ANDROID)
             record_android_load_libs(${target} "${link_with}")
         endif()
@@ -223,17 +225,9 @@ function(set_our_framework_properties target nm)
 endfunction(set_our_framework_properties)
 
 function(install_our_library target filename)
-    install(TARGETS ${target}
-            LIBRARY DESTINATION "lib${LIB_SUFFIX}"
-            ARCHIVE DESTINATION "lib${LIB_SUFFIX}"
-            FRAMEWORK DESTINATION "${FRAMEWORK_INSTALL_PREFIX}"
-            RUNTIME DESTINATION "bin"
-            # Doesn't work, see below.
-            # PUBLIC_HEADER DESTINATION "include"
-            )
     if(MSVC AND BUILD_SHARED_LIBS)
         install(FILES ${CMAKE_BINARY_DIR}/lib/\${CMAKE_INSTALL_CONFIG_NAME}/${filename}.pdb
-            DESTINATION lib
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}
             CONFIGURATIONS Debug RelWithDebInfo
         )
     endif()
@@ -244,6 +238,8 @@ endfunction(install_our_library)
 # header files associated with the target.  Instead we use the install(FILES)
 # to install headers.  We reuse the MACOSX_PACKAGE_LOCATION property,
 # substituting the "Headers" prefix with "include".
+
+# NOTE: modern design is to use `target_sources(FILE_SET)` which requires CMake 3.23
 function(install_our_headers)
     if(NOT WANT_FRAMEWORKS)
         foreach(hdr ${ARGN})
@@ -261,12 +257,12 @@ function(fix_executable nm)
 
         # FIXME:We want those as project attributes, not target attributes, but I don't know how
         set_target_properties(${nm} PROPERTIES XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "iPhone Developer")
-        
+
         # We have to add an icon to every executable on IPhone else
         # cmake won't create a resource copy build phase for us.
         # And re-creating those by hand would be a major pain.
         set_target_properties(${nm} PROPERTIES MACOSX_BUNDLE_ICON_FILE icon.png)
-        
+
         set_source_files_properties("${CMAKE_SOURCE_DIR}/misc/icon.png" PROPERTIES
             MACOSX_PACKAGE_LOCATION "Resources"
         )
@@ -293,7 +289,7 @@ function(add_our_executable nm)
     if(NOT OPTS_SRCS)
         set(OPTS_SRCS "${nm}.c")
     endif()
-    
+
     if(IPHONE)
         set(EXECUTABLE_TYPE MACOSX_BUNDLE)
         set(OPTS_SRCS ${OPTS_SRCS} "${CMAKE_SOURCE_DIR}/misc/icon.png")
@@ -307,7 +303,7 @@ function(add_our_executable nm)
     if(NOT BUILD_SHARED_LIBS)
         list(APPEND OPTS_DEFINES ALLEGRO_STATICLINK)
     endif()
-    
+
     foreach(d ${OPTS_DEFINES})
         set_property(TARGET ${nm} APPEND PROPERTY COMPILE_DEFINITIONS ${d})
     endforeach()
@@ -337,7 +333,7 @@ function(add_our_executable nm)
             set_target_properties(${nm} PROPERTIES LINK_FLAGS "-Wl,-subsystem,windows")
         endif()
     endif()
-   
+
     fix_executable(${nm})
 endfunction()
 

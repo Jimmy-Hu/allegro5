@@ -1,6 +1,7 @@
 package org.liballeg.android;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.content.Context;
 import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
@@ -28,6 +29,9 @@ import android.view.View;
 import android.view.KeyEvent;
 import android.window.OnBackInvokedCallback;
 import android.window.OnBackInvokedDispatcher;
+import android.net.Uri;
+import android.os.ParcelFileDescriptor;
+import java.io.FileNotFoundException;
 
 public class AllegroActivity extends Activity
 {
@@ -43,6 +47,7 @@ public class AllegroActivity extends Activity
    private Vector<Integer> joysticks;
    private Clipboard clipboard;
    private DisplayManager.DisplayListener displayListener;
+   private AllegroDialog dialog = null;
 
    public final static int JS_A = 0;
    public final static int JS_B = 1;
@@ -54,7 +59,32 @@ public class AllegroActivity extends Activity
    public final static int JS_DPAD_R = 7;
    public final static int JS_DPAD_U = 8;
    public final static int JS_DPAD_D = 9;
-   public final static int JS_MENU = 10;
+   public final static int JS_START = 10; // middle right (start, menu)
+   public final static int JS_SELECT = 11; // middle left (select, back)
+   public final static int JS_MODE = 12; // middle (mode, guide)
+   public final static int JS_THUMBL = 13;
+   public final static int JS_THUMBR = 14;
+   public final static int JS_L2 = 15;
+   public final static int JS_R2 = 16;
+   public final static int JS_C = 17;
+   public final static int JS_Z = 18;
+   public final static int JS_DPAD_CENTER = 19;
+   public final static int JS_BUTTON_1 = 20; // generic gamepad buttons
+   public final static int JS_BUTTON_2 = 21;
+   public final static int JS_BUTTON_3 = 22;
+   public final static int JS_BUTTON_4 = 23;
+   public final static int JS_BUTTON_5 = 24;
+   public final static int JS_BUTTON_6 = 25;
+   public final static int JS_BUTTON_7 = 26;
+   public final static int JS_BUTTON_8 = 27;
+   public final static int JS_BUTTON_9 = 28;
+   public final static int JS_BUTTON_10 = 29;
+   public final static int JS_BUTTON_11 = 30;
+   public final static int JS_BUTTON_12 = 31;
+   public final static int JS_BUTTON_13 = 32;
+   public final static int JS_BUTTON_14 = 33;
+   public final static int JS_BUTTON_15 = 34;
+   public final static int JS_BUTTON_16 = 35;
 
    public boolean joystickActive = false;
 
@@ -90,6 +120,11 @@ public class AllegroActivity extends Activity
    String getPubDataDir()
    {
       return getFilesDir().getAbsolutePath();
+   }
+
+   String getTempDir()
+   {
+      return getCacheDir().getAbsolutePath();
    }
 
    String getApkPath()
@@ -286,6 +321,7 @@ public class AllegroActivity extends Activity
    }
 
    public void updateOrientation() {
+      dismissMessageBox();
       nativeOnOrientationChange(getAllegroOrientation(), false);
    }
 
@@ -342,7 +378,7 @@ public class AllegroActivity extends Activity
       requestWindowFeature(Window.FEATURE_NO_TITLE);
       this.getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
 
-      if(Build.VERSION.SDK_INT >= 33) {
+      if (Build.VERSION.SDK_INT >= 33) {
          // handle the back button / gesture on API level 33+
          getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
             OnBackInvokedDispatcher.PRIORITY_DEFAULT, new OnBackInvokedCallback() {
@@ -416,6 +452,7 @@ public class AllegroActivity extends Activity
       Log.d("AllegroActivity", "onPause");
 
       sensors.unlisten();
+      dismissMessageBox();
 
       nativeOnPause();
       Log.d("AllegroActivity", "onPause end");
@@ -539,6 +576,29 @@ public class AllegroActivity extends Activity
       return android.os.Build.VERSION.RELEASE;
    }
 
+   public int openFileDescriptor(String uriString, String mode)
+   {
+      final int NOT_FOUND = -1, UNSUPPORTED = -2;
+
+      if (Build.VERSION.SDK_INT < 12)
+         return UNSUPPORTED;
+
+      try {
+         // See https://developer.android.com/reference/android/content/ContentResolver#openFileDescriptor(android.net.Uri,%20java.lang.String)
+         Uri uri = Uri.parse(uriString); // content:// or file://
+         ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(uri, mode);
+
+         // the user is responsible for closing this file descriptor
+         return pfd.detachFd(); // API 12+
+      }
+      catch (FileNotFoundException e) {
+         // permission issues?
+         Log.e("AllegroActivity", "openFileDescriptor: file not found or invalid mode");
+      }
+
+      return NOT_FOUND;
+   }
+
    private boolean isJoystick(int id) {
          InputDevice input = InputDevice.getDevice(id);
          int sources = input.getSources();
@@ -655,6 +715,36 @@ public class AllegroActivity extends Activity
             }
          });
       }
+   }
+
+   public AllegroDialog getNativeDialogAddon()
+   {
+      if (dialog == null)
+         dialog = new AllegroDialog(this); // lazy instantiation
+
+      return dialog;
+   }
+
+   private void dismissMessageBox()
+   {
+      // Message boxes block the calling thread. If the app receives a drawing
+      // halt/resume or a display resize event, Allegro will block until these
+      // events are acknowledged. If they are emitted while a message box is
+      // visible and if their acknowledgement takes place in the same thread
+      // that spawned the message box, then the app will freeze. A deadlock
+      // will occur because the events can't be acknowledged while the message
+      // box is blocking the same thread. We should not block in this case.
+      if (dialog != null)
+         dialog.dismissMessageBox();
+   }
+
+   @Override
+   protected void onActivityResult(int requestCode, int resultCode, Intent resultData)
+   {
+      super.onActivityResult(requestCode, resultCode, resultData);
+
+      if (dialog != null)
+         dialog.onActivityResult(requestCode, resultCode, resultData);
    }
 }
 

@@ -30,6 +30,12 @@ if(APPLE AND IPHONE)
    set(SUPPORT_NATIVE_DIALOG 1)
 endif(APPLE AND IPHONE)
 
+if(ANDROID)
+    list(APPEND NATIVE_DIALOG_SOURCES android_dialog.c)
+    set(ALLEGRO_CFG_NATIVE_DIALOG_ANDROID 1)
+    set(SUPPORT_NATIVE_DIALOG 1)
+endif(ANDROID)
+
 if(WIN32)
    list(APPEND NATIVE_DIALOG_SOURCES win_dialog.c)
    set(ALLEGRO_CFG_NATIVE_DIALOG_WINDOWS 1)
@@ -59,7 +65,7 @@ if(SUPPORT_NATIVE_DIALOG)
        allegro5/internal/aintern_native_dialog_cfg.h.cmake
        ${PROJECT_BINARY_DIR}/include/allegro5/internal/aintern_native_dialog_cfg.h
        )
-   
+
    include_directories(SYSTEM ${NATIVE_DIALOG_INCLUDE_DIRECTORIES})
 
    # Note: allegro_dialog NOT allegro_native_dialog.

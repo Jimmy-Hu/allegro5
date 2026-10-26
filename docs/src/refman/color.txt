@@ -185,7 +185,7 @@ lightsalmon, lightseagreen, lightskyblue, lightslategray,
 lightsteelblue, lightyellow, lime, limegreen, linen, magenta, maroon,
 mediumaquamarine, mediumblue, mediumorchid, mediumpurple,
 mediumseagreen, mediumslateblue, mediumspringgreen, mediumturquoise,
-mediumvioletred, midnightblue, mintcream, mistyrose, moccasin, 
+mediumvioletred, midnightblue, mintcream, mistyrose, moccasin,
 avajowhite, navy, oldlace, olive, olivedrab, orange, orangered,
 orchid, palegoldenrod, palegreen, paleturquoise, palevioletred,
 papayawhip, peachpuff, peru, pink, plum, powderblue, purple,
@@ -368,7 +368,7 @@ See also: [al_color_lab], [al_color_rgb_to_lab]
 
 ## API: al_color_rgb_to_lch
 
-Convert RGB values to CIE LCH color space. 
+Convert RGB values to CIE LCH color space.
 
 Since: 5.2.3
 
@@ -545,4 +545,15 @@ values.
 
 Since: 5.2.8
 
-See also: [al_color_linera], [al_color_rgb_to_linear]
+See also: [al_color_linear], [al_color_rgb_to_linear]
+
+
+## API: al_mix_color
+
+Blend two colors using linear interpolation in linear color space.
+The input colors are converted to linear space, interpolated using the
+given factor (in the range 0..1), then converted back to RGB.
+
+Since: 5.2.12
+
+See also: [al_color_rgb_to_linear]

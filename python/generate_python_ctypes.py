@@ -47,6 +47,8 @@ class Allegro:
             "intptr_t": c_void_p,
             "GLuint": c_uint,
             "unsignedlong": c_ulong,
+            "signedlonglong": c_longlong,
+            "unsignedlonglong": c_ulonglong,
             "long": c_long,
             "size_t": c_size_t,
             "off_t": c_int64,
@@ -148,7 +150,7 @@ class Allegro:
                     plist.append(c_void_p)
                     continue
 
-                mob = re.match("^.*?(\w+)$", param)
+                mob = re.match(r"^.*?(\w+)$", param)
                 if mob:
                     pnamepos = mob.start(1)
                     if pnamepos == 0:
@@ -277,19 +279,19 @@ class Allegro:
                     continue
 
                 # add function pointer as void pointer
-                mob = re.match(".*?\(\*(\w+)\)", field)
+                mob = re.match(r".*?\(\*(\w+)\)", field)
                 if mob:
                     flist.append((mob.group(1), "c_void_p"))
                     continue
 
                 # add any pointer as void pointer
-                mob = re.match(".*?\*(\w+)$", field)
+                mob = re.match(r".*?\*(\w+)$", field)
                 if mob:
                     flist.append((mob.group(1), "c_void_p"))
                     continue
 
                 # add an array
-                mob = re.match("(.*)\s+(\w+)\[(.*?)\]$", field)
+                mob = re.match(r"(.*)\s+(\w+)\[(.*?)\]$", field)
                 if mob:
                     # this is all a hack
                     n = 0
@@ -314,8 +316,8 @@ class Allegro:
                     continue
 
                 vars = field.split(",")
-                mob = re.match("\s*(.*?)\s+(\w+)\s*$", vars[0])
-                
+                mob = re.match(r"\s*(.*?)\s+(\w+)\s*$", vars[0])
+
                 t = self.get_type(mob.group(1))
                 vname = mob.group(2)
                 if t is not None and vname is not None:
@@ -397,7 +399,8 @@ def _add_dll(name):
 
     try:
         # RTLD_GLOBAL is required under OSX for some reason (?)
-        _dlls.append(CDLL(path, RTLD_GLOBAL))
+        # winmode=0 suppresses security restriction to load from CWD
+        _dlls.append(CDLL(path, RTLD_GLOBAL, winmode=0))
     except OSError:
         # No need to fail here, might just be one of the addons.
         pass
@@ -473,6 +476,11 @@ else:
         else:
              structs.add(name)
 
+    f.write("""
+# for prototypes with a pointer to enum
+LP_{0} = POINTER({0})
+\n""".format(c_int.__name__))
+
     # order structs and unions by their dependencies
     structs_list = []
 
@@ -496,7 +504,7 @@ else:
         x = al.types[name]
         base = x.__bases__[0]
         f.write("class " + name + "(" + base.__name__ + "):\n")
-        
+
 
         if hasattr(x, "my_fields"):
             f.write("    _fields_ = [\n")

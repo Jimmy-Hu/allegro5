@@ -163,7 +163,7 @@ static void draw_scroller(void)
 
       while (tl) {
          c = 1024 + n2 * credit_speed - credit_age;
-         
+
          if ((c > 0) && (c < 1024) && ((n2 % credit_skip) == 0)) {
             x = itofix(SCREEN_W / 2);
             y = itofix(SCREEN_H / 2 - 32);
@@ -274,8 +274,10 @@ int title_screen(void)
    text_pix = 0;
    text_width = 0;
 
-   play_midi(data[TITLE_MUSIC].dat, TRUE);
-   play_sample(data[WELCOME_SPL].dat, 255, 127, 1000, FALSE);
+   if (al_is_audio_installed()) {
+      play_midi(data[TITLE_MUSIC].dat, TRUE);
+      play_sample(data[WELCOME_SPL].dat, 255, 127, 1000, FALSE);
+   }
 
    load_credits();
 
@@ -330,7 +332,7 @@ int title_screen(void)
 
    do {
       updated = 0;
-      
+
       scroller();
       scroll_pos++;
       updated = 1;
@@ -345,7 +347,7 @@ int title_screen(void)
       rest(1);
    } while (!keypressed()); // && (!joy[0].button[0].b) && (!joy[0].button[1].b));
 
-   
+
    fade_out(5);
 
    while (keypressed())

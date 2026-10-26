@@ -1,3 +1,5 @@
+#define ALLEGRO_INTERNAL_UNSTABLE
+
 #include <stdarg.h>
 #include <stdio.h>
 #include "allegro5/allegro.h"
@@ -11,7 +13,7 @@
 /* The GTK and OSX implementations do not require an extra thread.
  * The Windows implementation does.
  */
-#if defined(ALLEGRO_CFG_NATIVE_DIALOG_WINDOWS) 
+#if defined(ALLEGRO_CFG_NATIVE_DIALOG_WINDOWS)
    #define TEXT_LOG_EXTRA_THREAD true
 #else
    #define TEXT_LOG_EXTRA_THREAD false

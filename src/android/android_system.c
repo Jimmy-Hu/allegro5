@@ -50,6 +50,7 @@ struct system_data_t {
    ALLEGRO_USTR *user_lib_name;
    ALLEGRO_USTR *resources_dir;
    ALLEGRO_USTR *data_dir;
+   ALLEGRO_USTR *temp_dir;
    ALLEGRO_USTR *apk_path;
    ALLEGRO_USTR *model;
    ALLEGRO_USTR *manufacturer;
@@ -220,11 +221,13 @@ JNI_FUNC(bool, AllegroActivity, nativeOnCreate, (JNIEnv *env, jobject obj))
    system_data.user_lib_name = _jni_callStringMethod(env, system_data.activity_object, "getUserLibName", "()Ljava/lang/String;");
    system_data.resources_dir = _jni_callStringMethod(env, system_data.activity_object, "getResourcesDir", "()Ljava/lang/String;");
    system_data.data_dir = _jni_callStringMethod(env, system_data.activity_object, "getPubDataDir", "()Ljava/lang/String;");
+   system_data.temp_dir = _jni_callStringMethod(env, system_data.activity_object, "getTempDir", "()Ljava/lang/String;");
    system_data.apk_path = _jni_callStringMethod(env, system_data.activity_object, "getApkPath", "()Ljava/lang/String;");
    system_data.model = _jni_callStringMethod(env, system_data.activity_object, "getModel", "()Ljava/lang/String;");
    system_data.manufacturer = _jni_callStringMethod(env, system_data.activity_object, "getManufacturer", "()Ljava/lang/String;");
    ALLEGRO_DEBUG("resources_dir: %s", al_cstr(system_data.resources_dir));
    ALLEGRO_DEBUG("data_dir: %s", al_cstr(system_data.data_dir));
+   ALLEGRO_DEBUG("temp_dir: %s", al_cstr(system_data.temp_dir));
    ALLEGRO_DEBUG("apk_path: %s", al_cstr(system_data.apk_path));
    ALLEGRO_DEBUG("model: %s", al_cstr(system_data.model));
    ALLEGRO_DEBUG("manufacturer: %s", al_cstr(system_data.manufacturer));
@@ -503,6 +506,8 @@ static bool android_get_monitor_info(int adapter, ALLEGRO_MONITOR_INFO *info)
 
    ALLEGRO_DEBUG("Monitor Info: %d:%d", info->x2, info->y2);
 
+   _jni_callv(env, DeleteLocalRef, rect);
+
    return true;
 }
 
@@ -563,6 +568,10 @@ ALLEGRO_PATH *_al_android_get_path(int id)
          break;
 
       case ALLEGRO_TEMP_PATH:
+         /* path to the application cache */
+         path = al_create_path_for_directory(al_cstr(system_data.temp_dir));
+         break;
+
       case ALLEGRO_USER_DATA_PATH:
       case ALLEGRO_USER_HOME_PATH:
       case ALLEGRO_USER_SETTINGS_PATH:
@@ -577,9 +586,9 @@ ALLEGRO_PATH *_al_android_get_path(int id)
          path = al_create_path(al_cstr(system_data.apk_path));
          break;
 
-		default:
-			path = al_create_path_for_directory("/DANGER/WILL/ROBINSON");
-			break;
+                default:
+                        path = al_create_path_for_directory("/DANGER/WILL/ROBINSON");
+                        break;
    }
 
    return path;
@@ -654,6 +663,29 @@ JNIEnv *al_android_get_jni_env(void)
 jobject al_android_get_activity(void)
 {
    return _al_android_activity_object();
+}
+
+/* Function: al_android_open_fd
+ */
+int al_android_open_fd(const char *uri, const char *mode)
+{
+   JNIEnv *env = _al_android_get_jnienv();
+   jobject activity = _al_android_activity_object();
+
+   jstring juri = _jni_call(env, jstring, NewStringUTF, uri != NULL ? uri : ""); /* content:// or file:// */
+   jstring jmode = _jni_call(env, jstring, NewStringUTF, mode != NULL ? mode : ""); /* "r", "w", "rw", "wa", "wt", "rwt" */
+
+   int fd = _jni_callIntMethodV(env, activity, "openFileDescriptor", "(Ljava/lang/String;Ljava/lang/String;)I", juri, jmode);
+
+   _jni_callv(env, DeleteLocalRef, jmode);
+   _jni_callv(env, DeleteLocalRef, juri);
+
+   if (fd == -1)
+      al_set_errno(ENOENT);
+   else if (fd < 0)
+      al_set_errno(ENOTSUP);
+
+   return fd;
 }
 
 /* vim: set sts=3 sw=3 et: */

@@ -27,6 +27,7 @@
 #include "allegro5/platform/aintosx.h"
 #include "./osxgl.h"
 #include "allegro5/allegro_osx.h"
+#include <pthread.h>
 #ifndef ALLEGRO_MACOSX
 #error something is wrong with the makefile
 #endif
@@ -153,17 +154,94 @@ static const char *allegro_pixel_format_names[] = {
    "ALLEGRO_DISPLAY_OPTIONS_COUNT"
 };
 
+/* ALOpenGLContext:
+ * An NSOpenGLContext that never reallocates its drawable behind the back of
+ * the thread that is drawing with it.
+ *
+ * Whenever the view geometry changes - a window resize, a move to a screen
+ * with a different backing scale, and so on - AppKit sends -update to the
+ * context from the main thread. That reallocates the context's drawable, which
+ * is not safe to do while another thread is issuing GL commands against the
+ * same context. Allegro runs the user's code, and hence all of its drawing, on
+ * a separate thread, so resizing a window while the program is drawing
+ * corrupts the GL driver's internal state and crashes.
+ *
+ * The update cannot simply be moved to the drawing thread either: -update
+ * insists on running on the main thread whenever the context has a view. So
+ * instead the spontaneous updates only take note that an update is due, and
+ * osx_update_context() below hands the work back to the main thread at a point
+ * where the drawing thread is blocked waiting for it.
+ *
+ * SDL marshals the update to the main thread the same way - see
+ * -[SDLOpenGLContext explicitUpdate] in its src/video/cocoa/SDL_cocoaopengl.m.
+ */
+@interface ALOpenGLContext : NSOpenGLContext
+{
+   volatile int update_pending;
+}
+-(BOOL) updatePending;
+-(void) reallyUpdate;
+@end
+
+@implementation ALOpenGLContext
+
+-(void) update
+{
+   __atomic_store_n(&update_pending, 1, __ATOMIC_SEQ_CST);
+}
+
+-(BOOL) updatePending
+{
+   return __atomic_load_n(&update_pending, __ATOMIC_SEQ_CST) != 0;
+}
+
+/* Main thread only, and only while the drawing thread is not drawing. */
+-(void) reallyUpdate
+{
+   /* Cleared first so that an update requested while this one is running is
+    * not lost.
+    */
+   __atomic_store_n(&update_pending, 0, __ATOMIC_SEQ_CST);
+   [super update];
+}
+
+@end
+
+/* osx_update_context:
+ * Apply a deferred -update, blocking until the main thread has done it.
+ * Call from the display's own thread only, and only in between frames: no GL
+ * command may be in flight while the drawable is reallocated.
+ */
+static void osx_update_context(ALLEGRO_DISPLAY_OSX_WIN *dpy, bool force)
+{
+   ALOpenGLContext *ctx = (ALOpenGLContext *) dpy->ctx;
+
+   if (ctx == nil || (!force && ![ctx updatePending]))
+      return;
+
+   if (pthread_main_np())
+      [ctx reallyUpdate];
+   else
+      dispatch_sync(dispatch_get_main_queue(), ^{ [ctx reallyUpdate]; });
+}
+
 /* Module functions */
 ALLEGRO_DISPLAY_INTERFACE* _al_osx_get_display_driver(void);
 ALLEGRO_DISPLAY_INTERFACE* _al_osx_get_display_driver_win(void);
 ALLEGRO_DISPLAY_INTERFACE* _al_osx_get_display_driver_fs(void);
-static NSOpenGLContext* osx_create_shareable_context(NSOpenGLPixelFormat* fmt, unsigned int* group);
+static ALOpenGLContext* osx_create_shareable_context(NSOpenGLPixelFormat* fmt, unsigned int* group);
 static bool set_display_flag(ALLEGRO_DISPLAY *display, int flag, bool onoff);
 static bool resize_display_win(ALLEGRO_DISPLAY *d, int w, int h);
 static bool resize_display_win_main_thread(ALLEGRO_DISPLAY *d, int w, int h);
 
 static void clear_to_black(NSOpenGLContext *context)
 {
+   /* Only the thread the context is current on may issue GL commands against
+    * it - anywhere else this would race with whatever that thread is drawing.
+    */
+   if ([NSOpenGLContext currentContext] != context)
+      return;
+
    /* Clear and flush (for double buffering) */
    glClearColor(0, 0, 0, 1);
    glClear(GL_COLOR_BUFFER_BIT);
@@ -754,6 +832,7 @@ static bool set_current_display(ALLEGRO_DISPLAY* d) {
    ALLEGRO_DISPLAY_OSX_WIN* dpy = (ALLEGRO_DISPLAY_OSX_WIN*) d;
    if (dpy->ctx != nil) {
       [dpy->ctx makeCurrentContext];
+      osx_update_context(dpy, false);
    }
    _al_ogl_set_extensions(d->ogl_extras->extension_api);
    return true;
@@ -763,7 +842,7 @@ static bool set_current_display(ALLEGRO_DISPLAY* d) {
 static void setup_gl(ALLEGRO_DISPLAY *d)
 {
    ALLEGRO_DISPLAY_OSX_WIN* dpy = (ALLEGRO_DISPLAY_OSX_WIN*) d;
-   [dpy->ctx performSelectorOnMainThread:@selector(update) withObject:nil waitUntilDone:YES];
+   osx_update_context(dpy, true);
    _al_ogl_setup_gl(d);
 }
 
@@ -802,8 +881,6 @@ static void osx_set_opengl_pixelformat_attributes(ALLEGRO_DISPLAY_OSX_WIN *dpy)
       // Take over the screen.
        *a = NSOpenGLPFAScreenMask; a++;
        *a = CGDisplayIDToOpenGLDisplayMask(dpy->display_id); a++;
-   } else {
-      *a = NSOpenGLPFAWindow; a++;
    }
 
    /* Find the requested colour depth */
@@ -881,8 +958,20 @@ static void osx_set_opengl_pixelformat_attributes(ALLEGRO_DISPLAY_OSX_WIN *dpy)
    /* Accelerated is always preferred, so we only set this for required not
     * for suggested.
     */
-   if (extras->required & ALLEGRO_RENDER_METHOD) {
+   if (extras->required & (1UL << ALLEGRO_RENDER_METHOD)) {
       *a++ = NSOpenGLPFAAccelerated;
+   }
+   /*
+    * OpenGL 3+ support
+    * Newer versions of macos support modern OpenGL, but won't create a view
+    * that supports it unless explicitly requested to. Note that even though
+    * this looks like 3.2 core, it is really >= 3.2, and it is quite strict
+    * about removing support for legacy OpenGL features, and requires versioned
+    * shaders.
+    */
+   if (dpy->parent.flags & ALLEGRO_OPENGL_3_0) {
+      *a++ = NSOpenGLPFAOpenGLProfile;
+      *a++ = (NSOpenGLPixelFormatAttribute) NSOpenGLProfileVersion3_2Core;
    }
 }
 
@@ -1073,16 +1162,16 @@ static void osx_run_fullscreen_display(ALLEGRO_DISPLAY_OSX_WIN* dpy)
  * Returns:
  *  The new context or nil if it cannot be created.
  */
-static NSOpenGLContext* osx_create_shareable_context(NSOpenGLPixelFormat* fmt, unsigned int* group)
+static ALOpenGLContext* osx_create_shareable_context(NSOpenGLPixelFormat* fmt, unsigned int* group)
 {
    // Iterate through all existing displays and try and find one that's compatible
    _AL_VECTOR* dpys = &al_get_system_driver()->displays;
    unsigned int i;
-   NSOpenGLContext* compat = nil;
+   ALOpenGLContext* compat = nil;
 
    for (i = 0; i < _al_vector_size(dpys); ++i) {
       ALLEGRO_DISPLAY_OSX_WIN* other = *(ALLEGRO_DISPLAY_OSX_WIN**) _al_vector_ref(dpys, i);
-      compat = [[NSOpenGLContext alloc] initWithFormat:fmt shareContext: other->ctx];
+      compat = [[ALOpenGLContext alloc] initWithFormat:fmt shareContext: other->ctx];
       if (compat != nil) {
       // OK, we can share with this one
          *group = other->display_group;
@@ -1094,7 +1183,7 @@ static NSOpenGLContext* osx_create_shareable_context(NSOpenGLPixelFormat* fmt, u
       // Set to a new group
       *group = next_display_group++;
       ALLEGRO_DEBUG("Creating new display group %d\n", *group);
-      compat = [[NSOpenGLContext alloc] initWithFormat:fmt shareContext: nil];
+      compat = [[ALOpenGLContext alloc] initWithFormat:fmt shareContext: nil];
    }
    return compat;
 }
@@ -1293,7 +1382,7 @@ static ALLEGRO_DISPLAY* create_display_fs(int w, int h)
       [dpy->win setTitle: title];
       [dpy->win setAcceptsMouseMovedEvents:YES];
       [dpy->win setViewsNeedDisplay:NO];
-      
+
       NSView *window_view = [[NSView alloc] initWithFrame:rect];
       [window_view setAutoresizingMask: NSViewWidthSizable | NSViewHeightSizable];
       [[dpy->win contentView] addSubview:window_view];
@@ -1524,6 +1613,21 @@ static ALLEGRO_DISPLAY* create_display_win(int w, int h) {
     * window can be created.
     */
    if (al_get_new_display_flags() & ALLEGRO_FULLSCREEN_WINDOW) {
+      /* FULLSCREEN_WINDOW ignores the passed size (see al_create_display
+       * docs); substitute the target adapter's desktop size so callers may
+       * pass (0, 0) and so the temporary view below is created at a sane
+       * extent.
+       */
+      if (w <= 0 || h <= 0) {
+         ALLEGRO_MONITOR_INFO mi;
+         int adapter = al_get_new_display_adapter();
+         if (adapter < 0)
+            adapter = 0;
+         if (al_get_monitor_info(adapter, &mi)) {
+            w = mi.x2 - mi.x1;
+            h = mi.y2 - mi.y1;
+         }
+      }
       __block BOOL ok;
       dispatch_sync(dispatch_get_main_queue(), ^{
          NSRect rc = NSMakeRect(0, 0, w,  h);
@@ -1598,7 +1702,7 @@ static ALLEGRO_DISPLAY* create_display_win(int w, int h) {
          mask |= NSWindowStyleMaskResizable;
       if (display->flags & ALLEGRO_FULLSCREEN)
          mask |= NSWindowStyleMaskResizable;
-      
+
       if ((adapter >= 0) &&
           (adapter < al_get_num_video_adapters())) {
          screen = [[NSScreen screens] objectAtIndex: adapter];
@@ -1633,7 +1737,7 @@ static ALLEGRO_DISPLAY* create_display_win(int w, int h) {
          ALLEGRO_DEBUG("Could not create rendering context\n");
          [view release];
          [fmt release];
-         
+
          return;
       }
       dpy->view = view;
@@ -1652,7 +1756,7 @@ static ALLEGRO_DISPLAY* create_display_win(int w, int h) {
        */
       [win setMinSize: NSMakeSize(MINIMUM_WIDTH / screen_scale_factor,
                                   MINIMUM_HEIGHT / screen_scale_factor)];
-      
+
       /* Maximize the window and update its width & height information */
       if (display->flags & ALLEGRO_MAXIMIZED) {
          [win setFrame: [screen visibleFrame] display: true animate: false];
@@ -1660,7 +1764,7 @@ static ALLEGRO_DISPLAY* create_display_win(int w, int h) {
          display->w = content.size.width;
          display->h = content.size.height;
       }
-      
+
       /* Place the window, respecting the location set by the user with
        * al_set_new_window_position().
        * If the user never called al_set_new_window_position, we simply let
@@ -1670,7 +1774,7 @@ static ALLEGRO_DISPLAY* create_display_win(int w, int h) {
        * the range -16000 ... 16000 (approximately, probably the range of a
        * signed 16 bit integer). Should we check for this?
        */
-      
+
       if ((x != INT_MAX) && (y != INT_MAX)) {
          /* The user gave us window coordinates */
          NSRect rc = [win frame];
@@ -1768,13 +1872,13 @@ static void destroy_display(ALLEGRO_DISPLAY* d)
    ALLEGRO_DISPLAY_OSX_WIN* dpy = (ALLEGRO_DISPLAY_OSX_WIN*) d;
    ALLEGRO_DISPLAY_OSX_WIN* other = NULL;
    unsigned int i;
-   
+
    // Set the display as the current display; needed because we need to
    // make the context current.
    if (old_dpy != d) {
       _al_set_current_display_only(d);
    }
-   
+
    /* First of all, save video bitmaps attached to this display. */
    // Check for other displays in this display group
    _AL_VECTOR* dpys = &al_get_system_driver()->displays;
@@ -1845,7 +1949,7 @@ static void destroy_display(ALLEGRO_DISPLAY* d)
    [dpy->cursor release];
    _al_event_source_free(&d->es);
    al_free(d->ogl_extras);
-   
+
    // Restore original display from before this function was called.
    // If the display we just destroyed is actually current, set the current
    // display to NULL.
@@ -1855,7 +1959,7 @@ static void destroy_display(ALLEGRO_DISPLAY* d)
       // Is this redundant? --pw
       _al_set_current_display_only(NULL);
    }
-   
+
    al_destroy_cond(dpy->halt_cond);
    al_destroy_mutex(dpy->halt_mutex);
    if (dpy->flip_mutex) {
@@ -1892,8 +1996,8 @@ static void flip_display(ALLEGRO_DISPLAY *disp)
 
    ALLEGRO_BITMAP *old_target = NULL;
    if (!((ALLEGRO_BITMAP_EXTRA_OPENGL *)disp->ogl_extras->opengl_target->extra)->is_backbuffer) {
-   	old_target = al_get_target_bitmap();
-	al_set_target_backbuffer(disp);
+           old_target = al_get_target_bitmap();
+        al_set_target_backbuffer(disp);
    }
 
    if (dpy->flip_mutex) {
@@ -2278,7 +2382,7 @@ static void set_window_position(ALLEGRO_DISPLAY* display, int x, int y)
     */
    NSArray *screen_list = [NSScreen screens];
    int found_screen = -1;
-   for (int i = 0; al_get_num_video_adapters(); i++) {
+   for (int i = 0; i < al_get_num_video_adapters(); i++) {
       ALLEGRO_MONITOR_INFO info;
       al_get_monitor_info(i, &info);
       if (x > info.x1 && x < info.x2 && y > info.y1 && y < info.y2) {
@@ -2323,7 +2427,7 @@ static void get_window_position(ALLEGRO_DISPLAY* display, int* px, int* py)
    ASSERT_USER_THREAD();
    ALLEGRO_DISPLAY_OSX_WIN* d = (ALLEGRO_DISPLAY_OSX_WIN*) display;
    NSWindow* window = d->win;
-	
+
    int primary_y = _al_osx_get_primary_screen_y();
    float global_scale_factor = _al_osx_get_global_scale_factor();
    dispatch_sync(dispatch_get_main_queue(), ^{

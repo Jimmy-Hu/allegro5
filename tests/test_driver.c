@@ -16,6 +16,8 @@
 #include <allegro5/allegro_ttf.h>
 #include <allegro5/allegro_primitives.h>
 
+ALLEGRO_DEBUG_CHANNEL("test")
+
 #define MAX_BITMAPS  128
 #define MAX_TRANS    8
 #define MAX_FONTS    16
@@ -879,7 +881,7 @@ static bool check_similarity(ALLEGRO_CONFIG const *cfg,
    double rms = bitmap_dissimilarity(bmp1, bmp2);
    double tolerance;
    char const *value;
-   
+
    if (bmp_type == HW) {
       char const *exp = al_get_config_value(cfg, testname, "hash_hw");
       char const *sigexp = al_get_config_value(cfg, testname, "sig_hw");
@@ -964,6 +966,7 @@ static bool do_test(ALLEGRO_CONFIG *cfg, char const *testname,
 
    for (op = 0; ; op++) {
       sprintf(buf, "op%d", op);
+      ALLEGRO_INFO("%s\n", buf);
       stmt = al_get_config_value(cfg, testname, buf);
       if (!stmt) {
          /* Check for a common mistake. */
@@ -1110,7 +1113,7 @@ static bool do_test(ALLEGRO_CONFIG *cfg, char const *testname,
             get_draw_bitmap_flag(V(9)));
          continue;
       }
-      
+
       if (SCAN("al_draw_tinted_scaled_rotated_bitmap_region", 14)) {
          al_draw_tinted_scaled_rotated_bitmap_region(B(0), F(1), F(2),
             F(3), F(4), C(5),
@@ -1480,7 +1483,7 @@ static bool do_test(ALLEGRO_CONFIG *cfg, char const *testname,
          set_config_float(cfg, testname, lval, result);
          continue;
       }
-       
+
       /* Fonts: per glyph text handling (5.1)  */
       if (SCAN("al_draw_glyph", 5)) {
          al_draw_glyph(get_font(V(0)), C(1), F(2), F(3), I(4));
@@ -1679,6 +1682,7 @@ static void partial_tests(ALLEGRO_CONFIG const *cfg, int n)
    ALLEGRO_USTR *name = al_ustr_new("");
 
    while (n > 0) {
+      ALLEGRO_INFO("Running test %s\n", argv[0]);
       /* Automatically prepend "test" for convenience. */
       if (0 == strncmp(argv[0], "test ", 5)) {
          al_ustr_assign_cstr(name, argv[0]);
@@ -1701,6 +1705,7 @@ static void partial_tests(ALLEGRO_CONFIG const *cfg, int n)
       argv++;
       n--;
    }
+   ALLEGRO_INFO("Done running tests\n");
 
    al_ustr_free(name);
 }

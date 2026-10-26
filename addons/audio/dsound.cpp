@@ -24,7 +24,7 @@
  * This does nothing for the unofficial DirectX SDK, which has __null
  * manually removed. */
 #if defined __MINGW32__ && defined __null
-	#undef __null
+      #undef __null
 #endif
 
 /* I'm not sure what library this is supposed to be in, but I couldn't find it yet */
@@ -32,6 +32,8 @@ const IID GUID_NULL = { 0, 0, 0, { 0, 0, 0, 0, 0, 0, 0, 0 } };
 
 static const IID _al_IID_IDirectSoundBuffer8 =        { 0x6825a449, 0x7524, 0x4d82, { 0x92, 0x0f, 0x50, 0xe3, 0x6a, 0xb3, 0xab, 0x1e } };
 static const IID _al_IID_IDirectSoundCaptureBuffer8 = { 0x00990df4, 0x0dbb, 0x4872, { 0x83, 0x3e, 0x6d, 0x30, 0x3e, 0x80, 0xae, 0xb6 } };
+
+#define ALLEGRO_INTERNAL_UNSTABLE
 #include "allegro5/allegro.h"
 
 extern "C" {
@@ -52,7 +54,7 @@ ALLEGRO_DEBUG_CHANNEL("audio-dsound")
 
 /* DirectSound vars */
 static IDirectSound8 *device;
-static IDirectSoundCapture8 *capture_device; 
+static IDirectSoundCapture8 *capture_device;
 static char ds_err_str[100];
 static int buffer_size; // in bytes
 static _AL_LIST* output_device_list;
@@ -121,6 +123,9 @@ static char *ds_get_error(HRESULT hr)
       case DSERR_NOAGGREGATION:
          strcpy(ds_err_str, "DSERR_NOAGGREGATION");
          break;
+      case DSERR_NODRIVER:
+         strcpy(ds_err_str, "DSERR_NODRIVER");
+         break;
       case DSERR_OUTOFMEMORY:
          strcpy(ds_err_str, "DSERR_OUTOFMEMORY");
          break;
@@ -138,7 +143,7 @@ static char *ds_get_error(HRESULT hr)
 
 /* Custom struct to hold voice information DirectSound needs */
 /* TODO: review */
-typedef struct ALLEGRO_DS_DATA {
+struct ALLEGRO_DS_DATA {
    int bits_per_sample;
    int channels;
    DSBUFFERDESC desc;
@@ -147,7 +152,7 @@ typedef struct ALLEGRO_DS_DATA {
    LPDIRECTSOUNDBUFFER8 ds8_buffer;
    int stop_voice;
    ALLEGRO_THREAD *thread;
-} ALLEGRO_DS_DATA;
+};
 
 
 static bool _dsound_voice_is_playing(const ALLEGRO_VOICE *voice);
@@ -632,12 +637,12 @@ static int _dsound_set_voice_position(ALLEGRO_VOICE *voice, unsigned int val)
    return 0;
 }
 
-typedef struct DSOUND_RECORD_DATA {
+struct DSOUND_RECORD_DATA {
    LPDIRECTSOUNDCAPTUREBUFFER buffer;
    LPDIRECTSOUNDCAPTUREBUFFER8 buffer8;
    DSCBUFFERDESC desc;
    WAVEFORMATEX wave_fmt;
-} DSOUND_RECORD_DATA;
+};
 
 static void *_dsound_update_recorder(ALLEGRO_THREAD *t, void *data)
 {
@@ -728,7 +733,7 @@ static void *_dsound_update_recorder(ALLEGRO_THREAD *t, void *data)
          if (last_read_pos >= extra->desc.dwBufferBytes)
             last_read_pos -= extra->desc.dwBufferBytes;
       }
-      
+
       al_unlock_mutex(r->mutex);
       al_rest(0.10);
    }
@@ -763,7 +768,7 @@ static int _dsound_open_recorder(ALLEGRO_AUDIO_RECORDER *r)
       ALLEGRO_ERROR("DirectSoundCaptureCreate8 failed: %s\n", ds_get_error(hr));
       return 1;
    }
-   
+
    hr = device->SetCooperativeLevel(get_window(), DSSCL_PRIORITY);
    if (FAILED(hr)) {
       ALLEGRO_ERROR("SetCooperativeLevel failed: %s\n", ds_get_error(hr));
@@ -772,7 +777,7 @@ static int _dsound_open_recorder(ALLEGRO_AUDIO_RECORDER *r)
 
    DSOUND_RECORD_DATA *extra = (DSOUND_RECORD_DATA *) al_calloc(1, sizeof(*extra));
 
-   DSCCAPS dsccaps;   
+   DSCCAPS dsccaps;
    dsccaps.dwSize = sizeof(DSCCAPS);
    hr = capture_device->GetCaps(&dsccaps);
    if (FAILED(hr)) {
@@ -789,7 +794,7 @@ static int _dsound_open_recorder(ALLEGRO_AUDIO_RECORDER *r)
    extra->wave_fmt.wBitsPerSample = (WORD)al_get_audio_depth_size(r->depth) * 8;
    extra->wave_fmt.nBlockAlign = extra->wave_fmt.nChannels * extra->wave_fmt.wBitsPerSample / 8;
    extra->wave_fmt.nAvgBytesPerSec = extra->wave_fmt.nSamplesPerSec * extra->wave_fmt.nBlockAlign;
-   
+
    memset(&extra->desc, 0, sizeof(extra->desc));
    extra->desc.dwSize = sizeof(extra->desc);
    extra->desc.lpwfxFormat = &extra->wave_fmt;
@@ -803,7 +808,7 @@ static int _dsound_open_recorder(ALLEGRO_AUDIO_RECORDER *r)
    }
 
    extra->buffer->QueryInterface(_al_IID_IDirectSoundCaptureBuffer8, (void **) &extra->buffer8);
-   
+
    r->extra = extra;
    r->thread = al_create_thread(_dsound_update_recorder, r);
 
@@ -832,7 +837,7 @@ static BOOL CALLBACK _ds_enum_callback(
          LPGUID lpGuid,
          LPCTSTR lpcstrDescription,
          LPCTSTR lpcstrModule,
-         LPVOID lpContext) 
+         LPVOID lpContext)
 {
    (void)lpcstrModule;
    (void)lpContext;

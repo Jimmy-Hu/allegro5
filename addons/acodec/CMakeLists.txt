@@ -7,7 +7,8 @@ endif()
 option(WANT_VORBIS "Enable Ogg Vorbis support using libvorbis" on)
 option(WANT_TREMOR "Enable Ogg Vorbis support using Tremor" off)
 option(WANT_OPUS "Enable Opus support using libopus" on)
-option(WANT_MODAUDIO "Enable MOD Audio support" on)
+option(WANT_DUMB "Enable mod audio support using DUMB" on)
+option(WANT_OPENMPT "Enable mod audio support using OpenMPT" on)
 option(WANT_ACODEC_DYNAMIC_LOAD "Enable DLL loading in acodec (Windows)" off)
 option(WANT_MP3 "Enable MP3 support" on)
 
@@ -150,7 +151,7 @@ acodec_summary(" - FLAC" SUPPORT_FLAC)
 # MOD audio
 #
 
-if(WANT_MODAUDIO)
+if(WANT_DUMB)
     find_package(DUMB)
     if(DUMB_FOUND)
         set(CMAKE_REQUIRED_INCLUDES ${DUMB_INCLUDE_DIR})
@@ -170,21 +171,21 @@ if(WANT_MODAUDIO)
         set(CMAKE_REQUIRED_INCLUDES)
         set(CMAKE_REQUIRED_LIBRARIES)
         if(DUMB_COMPILES)
-            set(SUPPORT_MODAUDIO 1)
+            set(SUPPORT_DUMB 1)
         endif(DUMB_COMPILES)
     endif(DUMB_FOUND)
-    if(NOT SUPPORT_MODAUDIO)
+    if(NOT SUPPORT_DUMB)
         message("WARNING: libdumb >= 2.0 or <= 0.9.3 not found or compile "
                 "test failed, disabling support. See "
                 "<https://github.com/kode54/dumb> for 2.0 or "
                 "<http://dumb.sourceforge.net/> for 0.9.3.")
-    endif(NOT SUPPORT_MODAUDIO)
-endif(WANT_MODAUDIO)
+    endif(NOT SUPPORT_DUMB)
+endif(WANT_DUMB)
 
-if(SUPPORT_MODAUDIO)
+if(SUPPORT_DUMB)
     include_directories(SYSTEM ${DUMB_INCLUDE_DIR})
-    set(ALLEGRO_CFG_ACODEC_MODAUDIO 1)
-    list(APPEND ACODEC_SOURCES modaudio.c)
+    set(ALLEGRO_CFG_ACODEC_DUMB 1)
+    list(APPEND ACODEC_SOURCES dumb.c)
 
     list(APPEND ACODEC_INCLUDE_DIRECTORIES ${DUMB_INCLUDE_DIR})
 
@@ -202,7 +203,81 @@ if(SUPPORT_MODAUDIO)
     endif()
 endif()
 
-acodec_summary(" - DUMB" SUPPORT_MODAUDIO)
+acodec_summary(" - DUMB" SUPPORT_DUMB)
+
+if(WANT_OPENMPT)
+    find_package(OpenMPT)
+
+    option(OPENMPT_ZLIB "Enable if OpenMPT static library needs zlib linked in." off)
+    option(OPENMPT_VORBIS "Enable if OpenMPT static library needs Ogg/Vorbis linked in." off)
+    if(OPENMPT_FOUND)
+        set(CMAKE_REQUIRED_INCLUDES ${OPENMPT_INCLUDE_DIR})
+        set(CMAKE_REQUIRED_LIBRARIES ${OPENMPT_LIBRARIES})
+
+        set(OPENMPT_TEST_SOURCE "
+            #include <libopenmpt/libopenmpt.h>
+            #include <libopenmpt/libopenmpt_stream_callbacks_file.h>
+            int main(void)
+            {
+                openmpt_module *mod = openmpt_module_create(
+                    openmpt_stream_get_file_callbacks(), NULL, NULL, NULL, NULL);
+                openmpt_module_read_interleaved_stereo(mod, 44100, 1, NULL);
+                return 0;
+            }")
+
+        run_cxx_compile_test(
+            "${OPENMPT_TEST_SOURCE}"
+            OPENMPT_COMPILES)
+        set(CMAKE_REQUIRED_INCLUDES)
+        set(CMAKE_REQUIRED_LIBRARIES)
+        if(OPENMPT_COMPILES)
+            set(SUPPORT_OPENMPT 1)
+            set(ALL_OPENMPT_LIBRARIES ${OPENMPT_LIBRARIES})
+        else()
+            if(OPENMPT_ZLIB)
+                find_package(ZLIB)
+            endif()
+
+            if(OPENMPT_VORBIS)
+                find_package(Vorbis)
+            endif()
+
+            # Try compiling with the extra dependencies.
+            set(OPENMPT_STATIC_LIBRARIES ${OPENMPT_LIBRARIES})
+            if(OPENMPT_ZLIB AND ZLIB_FOUND)
+                list(APPEND OPENMPT_STATIC_LIBRARIES "${ZLIB_LIBRARIES}")
+            endif()
+
+            if(OPENMPT_VORBIS AND VORBIS_FOUND)
+                list(APPEND OPENMPT_STATIC_LIBRARIES "${VORBIS_LIBRARIES}")
+            endif()
+
+            set(CMAKE_REQUIRED_LIBRARIES ${OPENMPT_STATIC_LIBRARIES})
+            set(CMAKE_REQUIRED_INCLUDES ${OPENMPT_INCLUDE_DIR})
+            run_cxx_compile_test("${OPENMPT_TEST_SOURCE}" OPENMPT_COMPILES_WITH_EXTRA_DEPS)
+            set(CMAKE_REQUIRED_INCLUDES)
+            set(CMAKE_REQUIRED_LIBRARIES)
+            if(OPENMPT_COMPILES_WITH_EXTRA_DEPS)
+                set(SUPPORT_OPENMPT 1)
+                set(ALL_OPENMPT_LIBRARIES ${OPENMPT_STATIC_LIBRARIES})
+            endif()
+        endif()
+    endif()
+endif()
+
+if(SUPPORT_OPENMPT)
+    include_directories(SYSTEM ${OPENMPT_INCLUDE_DIR})
+    set(ALLEGRO_CFG_ACODEC_OPENMPT 1)
+    list(APPEND ACODEC_SOURCES openmpt.c)
+    list(APPEND ACODEC_INCLUDE_DIRECTORIES ${OPENMPT_INCLUDE_DIR})
+    list(APPEND ACODEC_LIBRARIES ${ALL_OPENMPT_LIBRARIES})
+endif()
+
+acodec_summary(" - OpenMPT" SUPPORT_OPENMPT)
+
+if(SUPPORT_OPENMPT OR SUPPORT_DUMB)
+    list(APPEND ACODEC_SOURCES modaudio.c)
+endif(SUPPORT_OPENMPT OR SUPPORT_DUMB)
 
 #
 # Vorbis/Tremor
@@ -382,6 +457,10 @@ add_our_addon_library(allegro_acodec
     "-DALLEGRO_ACODEC_SRC ${FLAC__NO_DLL}"
     "${AUDIO_LINK_WITH};${ACODEC_LIBRARIES}"
     )
+
+if(SUPPORT_OPENMPT AND SHARED AND NOT WANT_MONOLITH)
+    set_target_properties(allegro_acodec PROPERTIES LINKER_LANGUAGE CXX)
+endif()
 
 install_our_headers(${ACODEC_INCLUDE_FILES})
 

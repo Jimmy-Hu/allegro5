@@ -250,7 +250,7 @@ bool al_reserve_samples(int reserve_samples)
 
  Error:
    free_sample_vector();
-   
+
    return false;
 }
 
@@ -292,14 +292,14 @@ bool al_set_default_mixer(ALLEGRO_MIXER *mixer)
             ALLEGRO_ERROR("al_attach_mixer_to_sample failed\n");
             goto Error;
          }
-      }      
+      }
    }
 
    return true;
 
 Error:
    free_sample_vector();
-   default_mixer = NULL;   
+   default_mixer = NULL;
    return false;
 }
 
@@ -344,7 +344,7 @@ bool al_play_sample(ALLEGRO_SAMPLE *spl, float gain, float pan, float speed,
 {
    static int next_id = 0;
    unsigned int i;
-   
+
    ASSERT(spl);
 
    if (ret_id != NULL) {
@@ -508,6 +508,14 @@ void *al_get_sample_data(const ALLEGRO_SAMPLE *spl)
    return spl->buffer.ptr;
 }
 
+/* Function: al_get_sample_instance_event_source
+ */
+ALLEGRO_EVENT_SOURCE *al_get_sample_instance_event_source(ALLEGRO_SAMPLE_INSTANCE *spl)
+{
+   ASSERT(spl);
+
+   return &spl->es;
+}
 
 /* Destroy all sample instances, and frees the associated vectors. */
 static void free_sample_vector(void)
@@ -524,7 +532,7 @@ static void free_sample_vector(void)
 
 void _al_kcm_shutdown_default_mixer(void)
 {
-   free_sample_vector(); 
+   free_sample_vector();
    al_destroy_mixer(allegro_mixer);
    al_destroy_voice(allegro_voice);
 
@@ -533,5 +541,14 @@ void _al_kcm_shutdown_default_mixer(void)
    default_mixer = NULL;
 }
 
+/* Helper function to emit a sample instance finished event */
+void _al_kcm_emit_sample_finished_event(ALLEGRO_SAMPLE_INSTANCE *spl)
+{
+   ALLEGRO_EVENT sample_finished_event;
+   sample_finished_event.user.type = ALLEGRO_EVENT_AUDIO_SAMPLE_FINISHED;
+   sample_finished_event.user.timestamp = al_get_time();
+   sample_finished_event.user.source = &spl->es;
+   al_emit_user_event(&spl->es, &sample_finished_event, NULL);
+}
 
 /* vim: set sts=3 sw=3 et: */

@@ -21,18 +21,15 @@
 #include "allegro5/internal/aintern_direct3d.h"
 #include "allegro5/internal/aintern_shader.h"
 
-#ifdef ALLEGRO_CFG_SHADER_HLSL
-
 #include <d3dx9.h>
-#include <stdio.h>
 
 #include "d3d.h"
 
 ALLEGRO_DEBUG_CHANNEL("shader")
 
-static _AL_VECTOR shaders;
+#ifdef ALLEGRO_CFG_SHADER_HLSL
 
-typedef struct ALLEGRO_SHADER_HLSL_S ALLEGRO_SHADER_HLSL_S;
+static _AL_VECTOR shaders;
 
 struct ALLEGRO_SHADER_HLSL_S
 {

@@ -37,7 +37,7 @@ file(RENAME ${CMAKE_BINARY_DIR}/demos/shooter/data/intro_music.ogg
 file(RENAME ${CMAKE_BINARY_DIR}/demos/shooter/data/menu_music.ogg
     ${CMAKE_BINARY_DIR}/demos/shooter/data/TITLE_MUSIC.ogg)
 
-        
+
 file(GLOB SHOOTER_DEMO_DATA data/*)
 
 set(SHOOTER_DATA
@@ -119,6 +119,10 @@ copy_data_dir_to_build(copy_shooter_data
     "${CMAKE_CURRENT_SOURCE_DIR}/data"
     "${CMAKE_CURRENT_BINARY_DIR}/data"
     )
+
+if(EMSCRIPTEN)
+    target_link_options(shooter PRIVATE "--preload-file" "data")
+endif()
 
 add_dependencies(shooter copy_shooter_data copy_example_data)
 

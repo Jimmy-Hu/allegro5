@@ -684,6 +684,7 @@ void *_al_kcm_feed_stream(ALLEGRO_THREAD *self, void *vstream)
    ALLEGRO_AUDIO_STREAM *stream = vstream;
    ALLEGRO_EVENT_QUEUE *queue;
    bool finished_event_sent = false;
+   bool prefill = true;
    (void)self;
 
    ALLEGRO_DEBUG("Stream feeder thread started.\n");
@@ -691,20 +692,16 @@ void *_al_kcm_feed_stream(ALLEGRO_THREAD *self, void *vstream)
    queue = al_create_event_queue();
    al_register_event_source(queue, &stream->spl.es);
 
-   al_lock_mutex(stream->feed_thread_started_mutex);
-   stream->feed_thread_started = true;
-   al_broadcast_cond(stream->feed_thread_started_cond);
-   al_unlock_mutex(stream->feed_thread_started_mutex);
-
    stream->quit_feed_thread = false;
 
    while (!stream->quit_feed_thread) {
       char *fragment;
       ALLEGRO_EVENT event;
 
-      al_wait_for_event(queue, &event);
+      if (!prefill)
+         al_wait_for_event(queue, &event);
 
-      if (event.type == ALLEGRO_EVENT_AUDIO_STREAM_FRAGMENT
+      if ((prefill || event.type == ALLEGRO_EVENT_AUDIO_STREAM_FRAGMENT)
           && !stream->is_draining) {
          unsigned long bytes;
          unsigned long bytes_written;
@@ -735,10 +732,14 @@ void *_al_kcm_feed_stream(ALLEGRO_THREAD *self, void *vstream)
                   bytes - bytes_written);
                bytes_written += bw;
                maybe_unlock_mutex(stream_mutex);
+               if (bw == 0)
+                  break;
             }
          }
-         else if (bytes_written < bytes) {
-            /* Fill the rest of the fragment with silence. */
+         if (bytes_written < bytes) {
+            /* Fill the rest of the fragment with silence. This happens towards
+             * the end of non-looped streams and looped streams with zero-length
+             * loops. */
             int silence_samples = (bytes - bytes_written) /
                (al_get_channel_count(stream->spl.spl_data.chan_conf) *
                 al_get_audio_depth_size(stream->spl.spl_data.depth));
@@ -781,6 +782,13 @@ void *_al_kcm_feed_stream(ALLEGRO_THREAD *self, void *vstream)
          fin_event.user.timestamp = al_get_time();
          al_emit_user_event(&stream->spl.es, &fin_event, NULL);
       }
+      if (prefill) {
+         al_lock_mutex(stream->feed_thread_started_mutex);
+         stream->feed_thread_started = true;
+         al_broadcast_cond(stream->feed_thread_started_cond);
+         al_unlock_mutex(stream->feed_thread_started_mutex);
+      }
+      prefill = false;
    }
 
    al_destroy_event_queue(queue);

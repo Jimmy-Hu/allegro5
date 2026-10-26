@@ -10,8 +10,6 @@
 #include "allegro5/allegro_audio.h"
 #include "allegro5/internal/aintern.h"
 #include "allegro5/internal/aintern_audio.h"
-#include "allegro5/internal/aintern_exitfunc.h"
-#include "allegro5/internal/aintern_system.h"
 #include "acodec.h"
 #include "helper.h"
 
@@ -203,7 +201,7 @@ static FLAC__StreamDecoderLengthStatus length_callback(
    FLACFILE *ff = (FLACFILE *)dptr;
    ALLEGRO_FILE *fh = ff->fh;
    (void)decoder;
-   
+
    /* XXX check error */
    *stream_length = (FLAC__uint64)al_fsize(fh);
 

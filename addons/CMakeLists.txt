@@ -81,7 +81,7 @@ if(SUPPORT_FONT AND WANT_TTF)
     option(FREETYPE_BZIP2 "Enable if FreeType static library needs bzip2 linked in." off)
     option(FREETYPE_PNG "Enable if FreeType static library needs png linked in." off)
     option(FREETYPE_HARFBUZZ "Enable if FreeType static library needs harfbuzz linked in." off)
-	
+
     if(FREETYPE_FOUND)
         set(FREETYPE_TEST_SOURCE "
             #include <ft2build.h>
@@ -117,7 +117,7 @@ if(SUPPORT_FONT AND WANT_TTF)
             if(FREETYPE_PNG)
                 find_package(PNG)
             endif()
-			
+
             if (FREETYPE_HARFBUZZ)
                 find_package(HarfBuzz)
             endif()
@@ -135,7 +135,7 @@ if(SUPPORT_FONT AND WANT_TTF)
             if(FREETYPE_PNG AND PNG_FOUND)
                 list(APPEND FREETYPE_STATIC_LIBRARIES "${PNG_LIBRARIES}")
             endif()
-			
+
             if (FREETYPE_HARFBUZZ AND HARFBUZZ_FOUND)
                 # there's a circular dependency between Harfbuzz and Freetype, so one of them has to be
                 # repeated to ensure proper static linking order
@@ -188,9 +188,6 @@ addons_summary("- Memfile addon" SUPPORT_MEMFILE)
 
 if(WANT_PHYSFS)
     find_package(PhysFS)
-    # FindPhysFS.cmake in cmake-2.6.2 doesn't call this but it should.
-    find_package_handle_standard_args(PHYSFS DEFAULT_MSG
-        PHYSFS_LIBRARY PHYSFS_INCLUDE_DIR)
     mark_as_advanced(PHYSFS_INCLUDE_DIR)
     mark_as_advanced(PHYSFS_LIBRARY)
 
@@ -198,7 +195,7 @@ if(WANT_PHYSFS)
 
     # Does this copy of PhysicsFS require zlib to be linked separately?
     # FindPhysFS should really figure this out for us, but it doesn't.
-    if(PHYSFS_FOUND)
+    if(PhysFS_FOUND)
         set(CMAKE_REQUIRED_INCLUDES ${PHYSFS_INCLUDE_DIR})
         set(CMAKE_REQUIRED_LIBRARIES ${PHYSFS_LIBRARY})
         run_c_compile_test("
@@ -224,7 +221,7 @@ if(WANT_PHYSFS)
         else()
             message("WARNING: PhysicsFS needs zlib, zlib not found, disabling PhysFS support.")
         endif()
-    endif(PHYSFS_FOUND)
+    endif()
 
     if(SUPPORT_PHYSFS)
         add_subdirectory(physfs)

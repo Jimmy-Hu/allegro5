@@ -120,27 +120,24 @@ void _al_kcm_detach_from_parent(ALLEGRO_SAMPLE_INSTANCE *spl)
       al_detach_voice(spl->parent.u.voice);
       return;
    }
-   
+
    mixer = spl->parent.u.mixer;
 
    /* Search through the streams and check for this one */
+   maybe_lock_mutex(mixer->ss.mutex);
    for (i = _al_vector_size(&mixer->streams) - 1; i >= 0; i--) {
       ALLEGRO_SAMPLE_INSTANCE **slot = _al_vector_ref(&mixer->streams, i);
 
       if (*slot == spl) {
-         maybe_lock_mutex(mixer->ss.mutex);
-
          _al_vector_delete_at(&mixer->streams, i);
          spl->parent.u.mixer = NULL;
          _al_kcm_stream_set_mutex(spl, NULL);
 
          spl->spl_read = NULL;
-
-         maybe_unlock_mutex(mixer->ss.mutex);
-
          break;
       }
    }
+   maybe_unlock_mutex(mixer->ss.mutex);
 
    al_free(spl->matrix);
    spl->matrix = NULL;
@@ -164,6 +161,8 @@ ALLEGRO_SAMPLE_INSTANCE *al_create_sample_instance(ALLEGRO_SAMPLE *sample_data)
       spl->spl_data = *sample_data;
    }
    spl->spl_data.free_buf = false;
+
+   al_init_user_event_source(&spl->es);
 
    spl->loop = ALLEGRO_PLAYMODE_ONCE;
    spl->speed = 1.0f;
@@ -194,6 +193,9 @@ ALLEGRO_SAMPLE_INSTANCE *al_create_sample_instance(ALLEGRO_SAMPLE *sample_data)
  */
 void al_destroy_sample_instance(ALLEGRO_SAMPLE_INSTANCE *spl)
 {
+   if (spl) {
+      al_destroy_user_event_source(&spl->es);
+   }
    _al_kcm_destroy_sample(spl, true);
 }
 

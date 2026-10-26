@@ -45,7 +45,7 @@ static void saw(ALLEGRO_AUDIO_STREAM *stream)
          for (i = 0; i < SAMPLES_PER_BUFFER; i++) {
             /* Crude saw wave at maximum amplitude. Please keep this compatible
              * to the A4 example so we know when something has broken for now.
-             * 
+             *
              * It would be nice to have a better example with user interface
              * and some simple synth effects.
              */
@@ -83,6 +83,7 @@ static void saw(ALLEGRO_AUDIO_STREAM *stream)
 int main(int argc, char **argv)
 {
    ALLEGRO_AUDIO_STREAM *stream;
+   void *buf;
 
    (void)argc;
    (void)argv;
@@ -98,6 +99,12 @@ int main(int argc, char **argv)
 
    stream = al_create_audio_stream(8, SAMPLES_PER_BUFFER, 22050,
       ALLEGRO_AUDIO_DEPTH_UINT8, ALLEGRO_CHANNEL_CONF_1);
+   while ((buf = al_get_audio_stream_fragment(stream))) {
+      al_fill_silence(buf, SAMPLES_PER_BUFFER, ALLEGRO_AUDIO_DEPTH_UINT8,
+         ALLEGRO_CHANNEL_CONF_1);
+      al_set_audio_stream_fragment(stream, buf);
+   }
+
    if (!stream) {
       abort_example("Could not create stream.\n");
    }

@@ -14,6 +14,10 @@
 #include <allegro5/allegro_image.h>
 #include <allegro5/allegro_color.h>
 
+#ifdef ALLEGRO_ANDROID
+#include <allegro5/allegro_android.h>
+#endif
+
 #include "common.c"
 
 /* To communicate from a separate thread, we need a user event. */
@@ -166,6 +170,7 @@ int main(int argc, char **argv)
    AsyncDialog *cur_dialog = NULL;
    AsyncDialog *message_box = NULL;
    bool redraw = false;
+   bool halt_drawing = false;
    bool close_log = false;
    int button;
    bool message_log = true;
@@ -195,13 +200,13 @@ int main(int argc, char **argv)
    al_install_mouse();
    touch = al_install_touch_input();
    al_install_keyboard();
-    
+
    if (touch) {
       al_set_mouse_emulation_mode(ALLEGRO_MOUSE_EMULATION_5_0_x);
    }
 
    message("Creating window...");
-    
+
 #ifdef ALLEGRO_IPHONE
    al_set_new_display_flags(ALLEGRO_FULLSCREEN_WINDOW);
 #endif
@@ -212,6 +217,10 @@ int main(int argc, char **argv)
       abort_example("Error creating display\n");
    }
    message("success.\n");
+
+#ifdef ALLEGRO_ANDROID
+   al_android_set_apk_file_interface();
+#endif
 
    message("Loading font '%s'...", "data/fixed_font.tga");
    font = al_load_font("data/fixed_font.tga", 0, 0);
@@ -241,7 +250,7 @@ restart:
 
    while (1) {
       float h = al_get_display_height(display);
-      
+
       ALLEGRO_EVENT event;
       al_wait_for_event(queue, &event);
 
@@ -249,10 +258,13 @@ restart:
          break;
 
       if (event.type == ALLEGRO_EVENT_KEY_DOWN) {
-         if (event.keyboard.keycode == ALLEGRO_KEY_ESCAPE && !cur_dialog)
-            break;
+         if (!cur_dialog) {
+            if (event.keyboard.keycode == ALLEGRO_KEY_ESCAPE ||
+                event.keyboard.keycode == ALLEGRO_KEY_BACK)
+               break;
+         }
       }
-       
+
       /* When a mouse button is pressed, and no native dialog is
        * shown already, we show a new one.
        */
@@ -324,7 +336,28 @@ restart:
          redraw = true;
       }
 
-      if (redraw && al_is_event_queue_empty(queue)) {
+#ifdef ALLEGRO_ANDROID
+      if (event.type == ALLEGRO_EVENT_DISPLAY_HALT_DRAWING) {
+         message("Drawing halt");
+         halt_drawing = true;
+         al_stop_timer(timer);
+         al_acknowledge_drawing_halt(display);
+      }
+
+      if (event.type == ALLEGRO_EVENT_DISPLAY_RESUME_DRAWING) {
+         message("Drawing resume");
+         al_acknowledge_drawing_resume(display);
+         al_resume_timer(timer);
+         halt_drawing = false;
+      }
+
+      if (event.type == ALLEGRO_EVENT_DISPLAY_RESIZE) {
+         message("Display resize");
+         al_acknowledge_resize(display);
+      }
+#endif
+
+      if (redraw && !halt_drawing && al_is_event_queue_empty(queue)) {
          float x = al_get_display_width(display) / 2;
          float y = 0;
          redraw = false;
